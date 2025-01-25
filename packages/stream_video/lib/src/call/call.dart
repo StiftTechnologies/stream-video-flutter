@@ -2068,6 +2068,15 @@ class Call {
       _connectOptions = _connectOptions.copyWith(
         screenShare: enabled ? TrackOption.enabled() : TrackOption.disabled(),
       );
+
+      if (enabled) {
+        _session?.rtcManager
+            ?.getPublisherTrackByType(SfuTrackType.screenShare)
+            ?.mediaTrack
+            .onEnded = () {
+          setScreenShareEnabled(enabled: false);
+        };
+      }
     }
 
     return result;

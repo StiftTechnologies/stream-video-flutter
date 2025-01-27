@@ -1,7 +1,7 @@
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 
 import 'call_client_publish_options.dart';
-import 'health_check.dart';
+import 'health_check_endpoint.dart';
 
 abstract class CallPreferences {
   Duration get connectTimeout;

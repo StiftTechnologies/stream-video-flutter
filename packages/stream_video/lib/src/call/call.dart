@@ -1195,6 +1195,9 @@ class Call {
       }
     });
 
+    final previousCheckInterval = _internetConnection.checkInterval;
+    _internetConnection.setIntervalAndResetTimer(const Duration(seconds: 1));
+
     final connectionStatus = await _internetConnection.onStatusChange
         .firstWhere((status) => status == InternetStatus.connected)
         .timeout(
@@ -1209,6 +1212,7 @@ class Call {
         .valueOrDefault(InternetStatus.disconnected);
 
     fastReconnectTimer.cancel();
+    _internetConnection.setIntervalAndResetTimer(previousCheckInterval);
     return connectionStatus;
   }
 

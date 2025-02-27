@@ -113,7 +113,7 @@ class SfuClient {
     return withHttpRequestHeaders(ctx, {
       'Authorization': 'Bearer $sfuToken',
       'X-Stream-Client': streamClientVersion,
-      'x-client-request-id': const Uuid().v4(),
+      // 'x-client-request-id': const Uuid().v4(),
     });
   }
 

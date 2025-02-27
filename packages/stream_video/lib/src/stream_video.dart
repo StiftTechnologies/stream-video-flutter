@@ -39,6 +39,7 @@ import 'models/push_provider.dart';
 import 'models/queried_calls.dart';
 import 'models/user.dart';
 import 'models/user_info.dart';
+import 'platform_detector/platform_detector.dart';
 import 'push_notification/push_notification_manager.dart';
 import 'retry/retry_policy.dart';
 import 'token/token.dart';
@@ -219,6 +220,9 @@ class StreamVideo extends Disposable {
 
   final StreamVideoOptions _options;
   final MutableClientState _state;
+
+  bool get muteVideoWhenInBackground => _options.muteVideoWhenInBackground;
+  bool get muteAudioWhenInBackground => _options.muteAudioWhenInBackground;
 
   final _tokenManager = TokenManager();
   final _subscriptions = Subscriptions();
@@ -428,30 +432,33 @@ class StreamVideo extends Disposable {
     try {
       final activeCallCid = _state.activeCall.valueOrNull?.callCid;
 
-      if (state.isPaused &&
-          activeCallCid == null &&
-          !_options.keepConnectionsAliveWhenInBackground) {
-        _logger.i(() => '[onAppState] close connection');
-        _subscriptions.cancel(_idEvents);
-        await _client.closeConnection();
-      } else if (state.isPaused && activeCallCid != null) {
-        final callState = activeCall?.state.value;
-        final isVideoEnabled =
-            callState?.localParticipant?.isVideoEnabled ?? false;
-        final isAudioEnabled =
-            callState?.localParticipant?.isAudioEnabled ?? false;
+      if (state.isPaused) {
+        // Handle app paused state
+        if (activeCallCid == null &&
+            !_options.keepConnectionsAliveWhenInBackground) {
+          _logger.i(() => '[onAppState] close connection');
+          _subscriptions.cancel(_idEvents);
+          await _client.closeConnection();
+        } else if (activeCallCid != null) {
+          final callState = activeCall?.state.value;
+          final isVideoEnabled =
+              callState?.localParticipant?.isVideoEnabled ?? false;
+          final isAudioEnabled =
+              callState?.localParticipant?.isAudioEnabled ?? false;
 
-        if (_options.muteVideoWhenInBackground && isVideoEnabled) {
-          await activeCall?.setCameraEnabled(enabled: false);
-          _mutedCameraByStateChange = true;
-          _logger.v(() => 'Muted camera track since app was paused.');
-        }
-        if (_options.muteAudioWhenInBackground && isAudioEnabled) {
-          await activeCall?.setMicrophoneEnabled(enabled: false);
-          _mutedAudioByStateChange = true;
-          _logger.v(() => 'Muted audio track since app was paused.');
+          if (_options.muteVideoWhenInBackground && isVideoEnabled) {
+            await activeCall?.setCameraEnabled(enabled: false);
+            _mutedCameraByStateChange = true;
+            _logger.v(() => 'Muted camera track since app was paused.');
+          }
+          if (_options.muteAudioWhenInBackground && isAudioEnabled) {
+            await activeCall?.setMicrophoneEnabled(enabled: false);
+            _mutedAudioByStateChange = true;
+            _logger.v(() => 'Muted audio track since app was paused.');
+          }
         }
       } else if (state.isResumed) {
+        // Handle app resumed state
         _logger.i(() => '[onAppState] open connection');
         await _client.openConnection();
         _subscriptions.add(_idEvents, _client.events.listen(_onEvent));
@@ -582,6 +589,54 @@ class StreamVideo extends Disposable {
     return manager.on<T>(onEvent);
   }
 
+  StreamSubscription<CallKitEvent>? disposeAfterResolvingRinging({
+    void Function()? disposingCallback,
+  }) {
+    return onCallKitEvent(
+      (event) {
+        if (event is ActionCallAccept ||
+            event is ActionCallDecline ||
+            event is ActionCallTimeout ||
+            event is ActionCallEnded) {
+          disposingCallback?.call();
+          dispose();
+        }
+      },
+    );
+  }
+
+  Future<bool> consumeAndAcceptActiveCall({
+    void Function(Call)? onCallAccepted,
+  }) async {
+    final calls = await pushNotificationManager?.activeCalls();
+    if (calls == null || calls.isEmpty) return false;
+
+    final callResult = await consumeIncomingCall(
+      uuid: calls.first.uuid!,
+      cid: calls.first.callCid!,
+    );
+
+    callResult.fold(
+      success: (result) async {
+        final call = result.data;
+        await call.accept();
+
+        onCallAccepted?.call(call);
+
+        return true;
+      },
+      failure: (error) {
+        _logger.d(
+          () =>
+              '[consumeAndAcceptActiveCall] error consuming incoming call: $error',
+        );
+        return false;
+      },
+    );
+
+    return false;
+  }
+
   CompositeSubscription observeCoreCallKitEvents({
     void Function(Call)? onCallAccepted,
   }) {
@@ -661,7 +716,13 @@ class StreamVideo extends Disposable {
     }
   }
 
+  /// ActionCallEnded event is sent by `flutter_callkit_incoming` when the call is ended.
+  /// On iOS this is connected to CallKit and should end active call or reject incoming call.
+  /// On Android this is connected to push notification being dismissed.
+  /// When app is terminated it can be send even when accepting the call. That's why we only handle it on iOS.
   Future<void> _onCallEnded(ActionCallEnded event) async {
+    if (CurrentPlatform.isAndroid) return;
+
     _logger.d(() => '[onCallEnded] event: $event');
 
     final uuid = event.data.uuid;

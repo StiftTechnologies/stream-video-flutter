@@ -28,12 +28,12 @@ class StreamVideoPushNotificationManager implements PushNotificationManager {
   /// Factory for creating a new instance of [StreamVideoPushNotificationManager].
   ///   /// Parameters:
   /// * [callerCustomizationCallback] callback providing customized caller data used for call screen and CallKit call. (for iOS this will only work for foreground calls)
-  /// * [backgroundVoipCallHandler] handler called when there is a VoIP call and app is in terminated state (for iOS only) - this handler must be a top-level function
-  /// refer to documentation for more details (https://getstream.io/video/docs/flutter/advanced/ringing_and_callkit/#integrating-apns-for-ios)
   static create({
     required StreamVideoPushProvider iosPushProvider,
     required StreamVideoPushProvider androidPushProvider,
     CallerCustomizationFunction? callerCustomizationCallback,
+    @Deprecated(
+        'Background handler is no longer needed for terminated state ringing on iOS.')
     BackgroundVoipCallHandler? backgroundVoipCallHandler,
     StreamVideoPushParams? pushParams,
     bool registerApnDeviceToken = false,
@@ -44,7 +44,6 @@ class StreamVideoPushNotificationManager implements PushNotificationManager {
       StreamVideoPushNotificationPlatform.instance.init(
         params.toJson(),
         callerCustomizationCallback,
-        backgroundVoipCallHandler,
       );
 
       return StreamVideoPushNotificationManager._(
@@ -68,7 +67,7 @@ class StreamVideoPushNotificationManager implements PushNotificationManager {
     this.callerCustomizationCallback,
     this.registerApnDeviceToken = false,
   }) : _client = client {
-    if (CurrentPlatform.isWeb) return;
+    if (!CurrentPlatform.isMobile) return;
 
     SharedPreferences.getInstance().then((prefs) => _sharedPreferences = prefs);
 
@@ -364,7 +363,7 @@ class StreamVideoPushNotificationManager implements PushNotificationManager {
 
   @override
   Future<List<CallData>> activeCalls() async {
-    if (CurrentPlatform.isWeb) return [];
+    if (!CurrentPlatform.isMobile) return [];
 
     final activeCalls = await FlutterCallkitIncoming.activeCalls();
     if (activeCalls is! List) return [];
@@ -396,7 +395,7 @@ class StreamVideoPushNotificationManager implements PushNotificationManager {
         .toList();
 
     // This is a workaround for the issue in flutter_callkit_incoming
-    // where second CallKit call overrids data in showCallkitIncoming native method
+    // where second CallKit call overrides data in showCallkitIncoming native method
     // and it's not possible to end the call by callCid
     if (activeCalls.length == calls.length) {
       await endAllCalls();

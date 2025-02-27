@@ -1,3 +1,23 @@
+## Unreleased
+
+✅ Added 
+* Introduced the `onCallDisconnected` callback in `StreamCallContainer`, enabling customization of the default behavior, which invokes `Navigator.pop` upon call disconnection.
+* Made `registerDevice()` and `unregisterDevice()` methods publicly available in `PushNotificationManager`.
+
+## 0.8.0
+
+* Updated minimum Flutter version to 3.27.4
+
+✅ Added
+- Introduced `disposeAfterResolvingRinging()` and `consumeAndAcceptActiveCall()` methods in `StreamVideo` to simplify the ringing flow implementation.
+    - Refer to the updated [Incoming Call Documentation](https://getstream.io/video/docs/flutter/incoming-calls/overview/) or the [Ringing Tutorial](https://getstream.io/video/sdk/flutter/tutorial/ringing/) for more details.
+
+🔄 Changed
+- Deprecated the `backgroundVoipCallHandler` parameter in `StreamVideoPushNotificationManager`, as it is no longer required for iOS ringing to function in a terminated state.
+
+🐞 Fixed
+- **(Windows/Linux)** Fixes compilation issues caused by `stream_webrtc_flutter` package.
+
 ## 0.7.2
 
 🐞 Fixed

@@ -1374,7 +1374,7 @@ class _Authentication extends open.Authentication {
     if (userToken.rawValue.isNotEmpty) {
       headerParams['Authorization'] = userToken.rawValue;
     }
-    headerParams['X-Stream-Client'] = streamClientVersion;
+    // headerParams['X-Stream-Client'] = streamClientVersion;
     // headerParams['x-client-request-id'] = const Uuid().v4();
   }
 }

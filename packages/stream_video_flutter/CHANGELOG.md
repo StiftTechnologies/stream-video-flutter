@@ -1,8 +1,16 @@
 ## Unreleased
 
 ✅ Added 
+* Added `CallPreferences? preferences` parameter to `consumeIncomingCall()` method in `StreamVideo` to make it possible to configure the consumed call.
+
+## 0.8.1
+
+✅ Added 
 * Introduced the `onCallDisconnected` callback in `StreamCallContainer`, enabling customization of the default behavior, which invokes `Navigator.pop` upon call disconnection.
 * Made `registerDevice()` and `unregisterDevice()` methods publicly available in `PushNotificationManager`.
+
+🐞 Fixed
+* Fixed remote participant roles array being empty after joining the call.
 
 ## 0.8.0
 
@@ -11,7 +19,7 @@
 
 ✅ Added
 * Introduced `disposeAfterResolvingRinging()` and `consumeAndAcceptActiveCall()` methods in `StreamVideo` to simplify the ringing flow implementation.
-    - Refer to the updated [Incoming Call Documentation](https://getstream.io/video/docs/flutter/incoming-calls/overview/) or the [Ringing Tutorial](https://getstream.io/video/sdk/flutter/tutorial/ringing/) for more details.
+    - Refer to the updated [Incoming Call Documentation](https://getstream.io/video/docs/flutter/advanced/incoming-calls/overview/) or the [Ringing Tutorial](https://getstream.io/video/sdk/flutter/tutorial/ringing/) for more details.
 
 🔄 Changed
 * Deprecated the `backgroundVoipCallHandler` parameter in `StreamVideoPushNotificationManager`, as it is no longer required for iOS ringing to function in a terminated state.

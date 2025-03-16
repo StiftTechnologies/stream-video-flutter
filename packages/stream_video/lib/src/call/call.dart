@@ -583,8 +583,10 @@ class Call {
   /// Joins the call.
   ///
   /// - [connectOptions]: optional initial call configuration
+  /// - [membersLimit]: Sets the maximum number of members to return as part of the response.
   Future<Result<None>> join({
     CallConnectOptions? connectOptions,
+    int? membersLimit,
   }) async {
     await _init();
 
@@ -618,7 +620,10 @@ class Call {
     }
 
     await _streamVideo.state.setActiveCall(this);
-    final result = await _join(connectOptions: connectOptions)
+    final result = await _join(
+      connectOptions: connectOptions,
+      membersLimit: membersLimit,
+    )
         .asCancelable()
         .storeIn(_idConnect, _cancelables)
         .valueOrDefault(Result.error('connect cancelled'));
@@ -635,6 +640,7 @@ class Call {
 
   Future<Result<None>> _join({
     CallConnectOptions? connectOptions,
+    int? membersLimit,
   }) async {
     if (_callJoinLock.locked) {
       _logger.w(() => '[join] rejected (already joining)');
@@ -679,6 +685,7 @@ class Call {
 
       final joinedResult = await _joinIfNeeded(
         connectOptions: connectOptions,
+        membersLimit: membersLimit,
       );
 
       if (joinedResult is! Success<CallCredentials>) {
@@ -810,6 +817,7 @@ class Call {
 
   Future<Result<CallCredentials>> _joinIfNeeded({
     CallConnectOptions? connectOptions,
+    int? membersLimit,
   }) async {
     _logger.d(
       () => '[joinIfNeeded] options: $connectOptions, '
@@ -831,6 +839,7 @@ class Call {
         migratingFrom: _reconnectStrategy == SfuReconnectionStrategy.migrate
             ? _session?.config.sfuName
             : null,
+        membersLimit: membersLimit,
       );
 
       return joinedResult.fold(
@@ -856,6 +865,7 @@ class Call {
     bool create = false,
     bool video = false,
     String? migratingFrom,
+    int? membersLimit,
     CallConnectOptions? connectOptions,
   }) async {
     _logger.d(() => '[joinCall] cid: $callCid, migratingFrom: $migratingFrom');
@@ -865,6 +875,7 @@ class Call {
       create: create,
       migratingFrom: migratingFrom,
       video: video,
+      membersLimit: membersLimit,
     );
 
     if (joinResult is! Success<CoordinatorJoined>) {
@@ -1707,6 +1718,7 @@ class Call {
   /// - [notify]: If `true`, sends a standard push notification.
   /// - [video]: Marks the call as a video call if `true`; otherwise, audio-only.
   /// - [watch]:  If `true`, listens to coordinator events and updates call state accordingly.
+  /// - [membersLimit]: Sets the total number of members to return as part of the response.
   Future<Result<CallReceivedOrCreatedData>> getOrCreate({
     List<String> memberIds = const [],
     bool ringing = false,
@@ -1715,6 +1727,7 @@ class Call {
     bool? notify,
     String? team,
     DateTime? startsAt,
+    int? membersLimit,
     StreamBackstageSettings? backstage,
     StreamLimitsSettings? limits,
     StreamRecordingSettings? recording,
@@ -1758,6 +1771,7 @@ class Call {
       notify: notify,
       video: video,
       startsAt: startsAt,
+      membersLimit: membersLimit,
       settingsOverride: settingsOverride,
       custom: custom,
     );
@@ -2168,27 +2182,51 @@ class Call {
     return result;
   }
 
+  @Deprecated('Use setParticipantPinnedLocally instead')
   Future<Result<None>> setParticipantPinned({
     required String sessionId,
     required String userId,
     required bool pinned,
   }) async {
-    final result = await _session?.setParticipantPinned(
-          sessionId: sessionId,
-          userId: userId,
-          pinned: pinned,
-        ) ??
-        Result.error('Session is null');
+    setParticipantPinnedLocally(
+      sessionId: sessionId,
+      userId: userId,
+      pinned: pinned,
+    );
 
-    if (result.isSuccess) {
-      _stateManager.setParticipantPinned(
-        sessionId: sessionId,
-        userId: userId,
-        pinned: pinned,
-      );
-    }
+    return const Result.success(none);
+  }
 
-    return result;
+  /// Pins/unpins the given session to the top of the participants list.
+  /// The change is done locally and won't affect other participants.
+  void setParticipantPinnedLocally({
+    required String sessionId,
+    required String userId,
+    required bool pinned,
+  }) {
+    _stateManager.setParticipantPinned(
+      sessionId: sessionId,
+      userId: userId,
+      pinned: pinned,
+    );
+  }
+
+  /// Pins/unpins the given session to the top of the participants list for everyone in the call.
+  /// This method requires current user to have the `pin-for-everyone` capability.
+  Future<Result<None>> setParticipantPinnedForEveryone({
+    required String sessionId,
+    required String userId,
+    required bool pinned,
+  }) async {
+    return pinned
+        ? _permissionsManager.pinForEveryone(
+            userId: userId,
+            sessionId: sessionId,
+          )
+        : _permissionsManager.unpinForEveryone(
+            userId: userId,
+            sessionId: sessionId,
+          );
   }
 
   /// Starts the livestreaming of the call.
@@ -2376,7 +2414,7 @@ class Call {
   }
 
   Future<Result<QueriedMembers>> queryMembers({
-    required Map<String, Object> filterConditions,
+    Map<String, Object> filterConditions = const {},
     String? next,
     String? prev,
     List<SortParamRequest> sorts = const [],

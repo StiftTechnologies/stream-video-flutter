@@ -221,12 +221,14 @@ class RtcLocalTrack<T extends MediaConstraints> extends RtcTrack {
 
     // Create a new track with the new constraints.
     final newStream = await rtc.navigator.mediaDevices.getMedia(constraints);
-    final newTrack = newStream.getTracks().first;
+    final newTrack =
+        newStream.getTracks().firstWhere((t) => t.kind == mediaTrack.kind);
     final clonedTracks = <rtc.MediaStreamTrack>[];
 
     // Replace the track on the transceiver if it exists.
     for (final transceiver in transceivers) {
-      if (transceiver.sender.track == null) {
+      if (transceiver.sender.track == null ||
+          transceiver.sender.track!.kind != mediaTrack.kind) {
         continue;
       }
 

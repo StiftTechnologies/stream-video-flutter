@@ -10,6 +10,7 @@ import 'package:flutter_dogfooding/core/repos/token_service.dart';
 // 🌎 Project imports:
 import 'package:flutter_dogfooding/di/injector.dart';
 import 'package:flutter_dogfooding/screens/splash_screen.dart';
+import 'package:flutter_dogfooding/utils/consts.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart'
     hide ConnectionState;
 import '../core/repos/app_preferences.dart';
@@ -69,10 +70,10 @@ class _StreamDogFoodingAppState extends State<StreamDogFoodingApp> {
     };
 
     // Initialise injector, use demo env for production
-    if (kDebugMode == true) {
-      await AppInjector.init();
-    } else {
+    if (kIsProd) {
       await AppInjector.init(forceEnvironment: Environment.demo);
+    } else {
+      await AppInjector.init();
     }
 
     // Check if there are saved credentials. If there are, login with them.

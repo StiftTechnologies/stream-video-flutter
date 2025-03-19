@@ -25,6 +25,7 @@ class CallState extends Equatable {
       isTranscribing: false,
       isCaptioning: false,
       isBackstage: false,
+      isAudioProcessing: false,
       settings: const CallSettings(),
       egress: const CallEgress(),
       rtmpIngress: '',
@@ -48,6 +49,7 @@ class CallState extends Equatable {
       blockedUserIds: const [],
       participantCount: 0,
       anonymousParticipantCount: 0,
+      iOSMultitaskingCameraAccessEnabled: false,
       custom: const {},
     );
   }
@@ -64,6 +66,7 @@ class CallState extends Equatable {
     required this.isTranscribing,
     required this.isCaptioning,
     required this.isBackstage,
+    required this.isAudioProcessing,
     required this.settings,
     required this.egress,
     required this.rtmpIngress,
@@ -87,6 +90,7 @@ class CallState extends Equatable {
     required this.blockedUserIds,
     required this.participantCount,
     required this.anonymousParticipantCount,
+    required this.iOSMultitaskingCameraAccessEnabled,
     required this.custom,
   });
 
@@ -104,6 +108,7 @@ class CallState extends Equatable {
   final bool isTranscribing;
   final bool isCaptioning;
   final bool isBackstage;
+  final bool isAudioProcessing;
   final RtcMediaDevice? videoInputDevice;
   final RtcMediaDevice? audioInputDevice;
   final RtcMediaDevice? audioOutputDevice;
@@ -124,6 +129,7 @@ class CallState extends Equatable {
   final List<String> blockedUserIds;
   final int participantCount;
   final int anonymousParticipantCount;
+  final bool iOSMultitaskingCameraAccessEnabled;
   final Map<String, Object> custom;
 
   String get callId => callCid.id;
@@ -136,6 +142,10 @@ class CallState extends Equatable {
 
   List<CallParticipantState> get otherParticipants {
     return callParticipants.where((element) => !element.isLocal).toList();
+  }
+
+  List<CallParticipantState> get activeSpeakers {
+    return callParticipants.where((element) => element.isSpeaking).toList();
   }
 
   /// Returns a copy of this [CallState] with the given fields replaced
@@ -152,6 +162,7 @@ class CallState extends Equatable {
     bool? isTranscribing,
     bool? isCaptioning,
     bool? isBackstage,
+    bool? isAudioProcessing,
     CallSettings? settings,
     CallEgress? egress,
     String? rtmpIngress,
@@ -175,6 +186,7 @@ class CallState extends Equatable {
     List<String>? blockedUserIds,
     int? participantCount,
     int? anonymousParticipantCount,
+    bool? iOSMultitaskingCameraAccessEnabled,
     Map<String, Object>? custom,
   }) {
     return CallState._(
@@ -189,6 +201,7 @@ class CallState extends Equatable {
       isTranscribing: isTranscribing ?? this.isTranscribing,
       isCaptioning: isCaptioning ?? this.isCaptioning,
       isBackstage: isBackstage ?? this.isBackstage,
+      isAudioProcessing: isAudioProcessing ?? this.isAudioProcessing,
       settings: settings ?? this.settings,
       egress: egress ?? this.egress,
       rtmpIngress: rtmpIngress ?? this.rtmpIngress,
@@ -213,6 +226,8 @@ class CallState extends Equatable {
       participantCount: participantCount ?? this.participantCount,
       anonymousParticipantCount:
           anonymousParticipantCount ?? this.anonymousParticipantCount,
+      iOSMultitaskingCameraAccessEnabled: iOSMultitaskingCameraAccessEnabled ??
+          this.iOSMultitaskingCameraAccessEnabled,
       custom: custom ?? this.custom,
     );
   }
@@ -259,6 +274,7 @@ class CallState extends Equatable {
         isCaptioning,
         isBroadcasting,
         isBackstage,
+        isAudioProcessing,
         settings,
         egress,
         rtmpIngress,
@@ -282,6 +298,7 @@ class CallState extends Equatable {
         blockedUserIds,
         participantCount,
         anonymousParticipantCount,
+        iOSMultitaskingCameraAccessEnabled,
         custom,
       ];
 

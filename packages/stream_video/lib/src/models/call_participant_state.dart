@@ -5,6 +5,7 @@ import '../sfu/data/models/sfu_connection_quality.dart';
 import '../sfu/data/models/sfu_track_type.dart';
 import '../sorting/call_participant_sorting_presets.dart';
 import '../utils/string.dart';
+import 'call_participant_pin.dart';
 import 'call_reaction.dart';
 import 'call_track_state.dart';
 import 'user_info.dart';
@@ -14,7 +15,7 @@ import 'viewport_visibility.dart';
 class CallParticipantState
     with EquatableMixin
     implements Comparable<CallParticipantState> {
-  const CallParticipantState({
+  CallParticipantState({
     required this.userId,
     required this.roles,
     required this.name,
@@ -27,12 +28,13 @@ class CallParticipantState
     this.connectionQuality = SfuConnectionQuality.unspecified,
     this.isOnline = false,
     this.audioLevel = 0,
+    List<double>? audioLevels,
     this.isSpeaking = false,
     this.isDominantSpeaker = false,
-    this.isPinned = false,
+    this.pin,
     this.reaction,
     this.viewportVisibility = ViewportVisibility.unknown,
-  });
+  }) : audioLevels = audioLevels ?? [audioLevel];
 
   final String userId;
   final List<String> roles;
@@ -45,15 +47,25 @@ class CallParticipantState
   final bool isLocal;
   final SfuConnectionQuality connectionQuality;
   final bool isOnline;
+
+  /// The latest audio level for the user.
   final double audioLevel;
+
+  /// List of the last 10 audio levels.
+  final List<double> audioLevels;
+
   final bool isSpeaking;
   final bool isDominantSpeaker;
-  final bool isPinned;
+  final CallParticipantPin? pin;
   final CallReaction? reaction;
   final ViewportVisibility viewportVisibility;
 
+  bool get isPinned => pin != null;
+
   /// Returns a copy of this [CallParticipantState] with the given fields
   /// replaced with the new values.
+  ///
+  /// If you want to update the audioLevel, consider using [copyWithUpdatedAudioLevels].
   CallParticipantState copyWith({
     String? userId,
     List<String>? roles,
@@ -67,9 +79,10 @@ class CallParticipantState
     SfuConnectionQuality? connectionQuality,
     bool? isOnline,
     double? audioLevel,
+    List<double>? audioLevels,
     bool? isSpeaking,
     bool? isDominantSpeaker,
-    bool? isPinned,
+    CallParticipantPin? pin,
     CallReaction? reaction,
     ViewportVisibility? viewportVisibility,
   }) {
@@ -86,11 +99,55 @@ class CallParticipantState
       connectionQuality: connectionQuality ?? this.connectionQuality,
       isOnline: isOnline ?? this.isOnline,
       audioLevel: audioLevel ?? this.audioLevel,
+      audioLevels: audioLevels ?? this.audioLevels,
       isSpeaking: isSpeaking ?? this.isSpeaking,
       isDominantSpeaker: isDominantSpeaker ?? this.isDominantSpeaker,
-      isPinned: isPinned ?? this.isPinned,
+      pin: pin ?? this.pin,
       reaction: reaction ?? this.reaction,
       viewportVisibility: viewportVisibility ?? this.viewportVisibility,
+    );
+  }
+
+  /// Copies the current state and adds the latest [audioLevel] to the last 10 [audioLevels].
+  CallParticipantState copyWithUpdatedAudioLevels({
+    required double audioLevel,
+    bool? isSpeaking,
+  }) {
+    final levels = audioLevels;
+    levels.add(audioLevel);
+    while (levels.length > 10) {
+      levels.removeAt(0);
+    }
+
+    return copyWith(
+      audioLevel: audioLevel,
+      audioLevels: audioLevels,
+      isSpeaking: isSpeaking,
+    );
+  }
+
+  CallParticipantState copyWithPin({
+    required CallParticipantPin? participantPin,
+  }) {
+    return CallParticipantState(
+      userId: userId,
+      roles: roles,
+      name: name,
+      custom: custom,
+      image: image,
+      sessionId: sessionId,
+      trackIdPrefix: trackIdPrefix,
+      publishedTracks: publishedTracks,
+      isLocal: isLocal,
+      connectionQuality: connectionQuality,
+      isOnline: isOnline,
+      audioLevel: audioLevel,
+      audioLevels: audioLevels,
+      isSpeaking: isSpeaking,
+      isDominantSpeaker: isDominantSpeaker,
+      pin: participantPin,
+      reaction: reaction,
+      viewportVisibility: viewportVisibility,
     );
   }
 
@@ -119,7 +176,7 @@ class CallParticipantState
         'publishedTracks: $publishedTracks, '
         'isLocal: $isLocal, '
         'connectionQuality: $connectionQuality, isOnline: $isOnline, '
-        'audioLevel: $audioLevel, isSpeaking: $isSpeaking, '
+        'audioLevel: $audioLevel, audioLevels: $audioLevels, isSpeaking: $isSpeaking, '
         'isDominantSpeaker: $isDominantSpeaker, isPinned: $isPinned, '
         'reaction: $reaction, viewportVisibility: $viewportVisibility}';
   }
@@ -138,9 +195,10 @@ class CallParticipantState
         connectionQuality,
         isOnline,
         audioLevel,
+        audioLevels,
         isSpeaking,
         isDominantSpeaker,
-        isPinned,
+        pin,
         reaction,
         viewportVisibility,
       ];

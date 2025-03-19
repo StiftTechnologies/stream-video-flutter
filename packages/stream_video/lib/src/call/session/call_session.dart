@@ -8,11 +8,11 @@ import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart' as rtc;
 import 'package:synchronized/synchronized.dart';
 import 'package:system_info2/system_info2.dart';
 
+import '../../../globals.dart';
 import '../../../protobuf/video/sfu/event/events.pb.dart' as sfu_events;
 import '../../../protobuf/video/sfu/models/models.pb.dart' as sfu_models;
 import '../../../protobuf/video/sfu/models/models.pbenum.dart';
 import '../../../protobuf/video/sfu/signal_rpc/signal.pb.dart' as sfu;
-import '../../../version.g.dart';
 import '../../disposable.dart';
 import '../../errors/video_error.dart';
 import '../../errors/video_error_composer.dart';
@@ -126,12 +126,14 @@ class CallSession extends Disposable {
       sfu_models.Device? device;
       sfu_models.Browser? browser;
 
-      var os = sfu_models.OS();
+      var os = sfu_models.OS(
+        name: CurrentPlatform.name,
+      );
 
       if (CurrentPlatform.isAndroid) {
         final deviceInfo = await DeviceInfoPlugin().androidInfo;
         os = sfu_models.OS(
-          name: 'Android',
+          name: CurrentPlatform.name,
           version: deviceInfo.version.release,
           architecture: SysInfo.rawKernelArchitecture,
         );
@@ -141,7 +143,7 @@ class CallSession extends Disposable {
       } else if (CurrentPlatform.isIos) {
         final deviceInfo = await DeviceInfoPlugin().iosInfo;
         os = sfu_models.OS(
-          name: 'iOS',
+          name: CurrentPlatform.name,
           version: deviceInfo.systemVersion,
         );
         device = sfu_models.Device(
@@ -155,21 +157,29 @@ class CallSession extends Disposable {
         );
       } else if (CurrentPlatform.isMacOS) {
         final deviceInfo = await DeviceInfoPlugin().macOsInfo;
+        os = sfu_models.OS(
+          name: CurrentPlatform.name,
+          version:
+              '${deviceInfo.majorVersion}.${deviceInfo.minorVersion}.${deviceInfo.patchVersion}',
+          architecture: deviceInfo.arch,
+        );
         device = sfu_models.Device(
           name: deviceInfo.model,
           version: deviceInfo.osRelease,
         );
       } else if (CurrentPlatform.isWindows) {
         final deviceInfo = await DeviceInfoPlugin().windowsInfo;
-        device = sfu_models.Device(
-          name: deviceInfo.productName,
-          version: deviceInfo.buildNumber.toString(),
+        os = sfu_models.OS(
+          name: CurrentPlatform.name,
+          version:
+              '${deviceInfo.majorVersion}.${deviceInfo.minorVersion}.${deviceInfo.buildNumber}',
+          architecture: deviceInfo.buildLabEx,
         );
       } else if (CurrentPlatform.isLinux) {
         final deviceInfo = await DeviceInfoPlugin().linuxInfo;
-        device = sfu_models.Device(
-          name: deviceInfo.name,
-          version: deviceInfo.version,
+        os = sfu_models.OS(
+          name: CurrentPlatform.name,
+          version: '${deviceInfo.name} ${deviceInfo.version}',
         );
       }
 
@@ -341,6 +351,8 @@ class CallSession extends Disposable {
       await onRtcManagerCreatedCallback?.call(rtcManager!);
       _rtcManagerSubject!.add(rtcManager!);
 
+      stateManager.sfuPinsUpdated(event.callState.pins);
+
       _logger.d(() => '[start] completed');
       return Result.success(
         (
@@ -426,6 +438,8 @@ class CallSession extends Disposable {
         for (final track in remoteTracks) {
           await _onRemoteTrackReceived(rtcManager!.subscriber, track);
         }
+
+        stateManager.sfuPinsUpdated(event.callState.pins);
 
         _logger.d(() => '[fastReconnect] completed');
         return Result.success(
@@ -536,6 +550,8 @@ class CallSession extends Disposable {
         stateManager.sfuTrackUnpublished(event);
       } else if (event is SfuDominantSpeakerChangedEvent) {
         stateManager.sfuDominantSpeakerChanged(event);
+      } else if (event is SfuPinsUpdatedEvent) {
+        stateManager.sfuPinsUpdated(event.pins);
       }
     });
   }
@@ -798,16 +814,6 @@ class CallSession extends Disposable {
     }
   }
 
-  Future<Result<None>> setParticipantPinned({
-    required String sessionId,
-    required String userId,
-    required bool pinned,
-  }) async {
-    _logger.d(() => '[setParticipantPinned]');
-    // Nothing to do here, this is handled by the UI
-    return const Result.success(none);
-  }
-
   Future<Result<None>> updateViewportVisibility(
     VisibilityChange visibilityChange,
   ) async {
@@ -928,6 +934,26 @@ class CallSession extends Disposable {
     }
 
     final result = await rtcManager.setCameraPosition(cameraPosition: position);
+    return result.map((_) => none);
+  }
+
+  Future<Result<None>> notifyNoiseCancellationStarted() async {
+    final result = await sfuClient.startNoiseCancellation(
+      sfu.StartNoiseCancellationRequest(
+        sessionId: sessionId,
+      ),
+    );
+
+    return result.map((_) => none);
+  }
+
+  Future<Result<None>> notifyNoiseCancellationStopped() async {
+    final result = await sfuClient.stopNoiseCancellation(
+      sfu.StopNoiseCancellationRequest(
+        sessionId: sessionId,
+      ),
+    );
+
     return result.map((_) => none);
   }
 

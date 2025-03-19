@@ -5,12 +5,14 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dogfooding/app/custom_video_localizations.dart';
 import 'package:flutter_dogfooding/core/repos/token_service.dart';
 import 'package:flutter_dogfooding/router/routes.dart';
 import 'package:flutter_dogfooding/theme/app_palette.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart';
+import 'package:stream_video_flutter/stream_video_flutter_l10n.dart';
 
 import '../core/repos/app_preferences.dart';
 import '../di/injector.dart';
@@ -43,7 +45,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       prefs.environment,
     );
 
-    streamVideo.observeCallDeclinedCallKitEvent();
+    final subscription = streamVideo.observeCallDeclinedCallKitEvent();
+
+    streamVideo.disposeAfterResolvingRinging(
+      disposingCallback: () {
+        subscription?.cancel();
+        AppInjector.reset();
+      },
+    );
 
     // Handle the message.
     await _handleRemoteMessage(message);
@@ -58,7 +67,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<bool> _handleRemoteMessage(RemoteMessage message) async {
   final streamVideo = locator.get<StreamVideo>();
-  return streamVideo.handleVoipPushNotification(message.data);
+  return streamVideo.handleRingingFlowNotifications(message.data);
 }
 
 class StreamDogFoodingAppContent extends StatefulWidget {
@@ -111,75 +120,61 @@ class _StreamDogFoodingAppContentState
   }
 
   void _tryConsumingIncomingCallFromTerminatedState() {
-    if (CurrentPlatform.isIos) return;
+    if (!CurrentPlatform.isAndroid) return;
 
     if (_router.routerDelegate.navigatorKey.currentContext == null) {
       // App is not running yet. Postpone consuming after app is in the foreground
       WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
-        _consumeIncomingCall();
+        final streamVideo = locator.get<StreamVideo>();
+        streamVideo.consumeAndAcceptActiveCall(
+          onCallAccepted: (call) {
+            final extra = (
+              call: call,
+              connectOptions: null,
+            );
+
+            _router.push(CallRoute($extra: extra).location, extra: extra);
+          },
+        );
       });
     } else {
       // no-op. If the app is already running we'll handle it via events
     }
   }
 
-  Future<void> _consumeIncomingCall() async {
-    if (!locator.isRegistered<StreamVideo>()) return;
-
-    final streamVideo = locator.get<StreamVideo>();
-    final calls = await streamVideo.pushNotificationManager?.activeCalls();
-
-    if (calls == null || calls.isEmpty) return;
-
-    final callResult = await streamVideo.consumeIncomingCall(
-      uuid: calls.first.uuid!,
-      cid: calls.first.callCid!,
-    );
-
-    callResult.fold(success: (result) async {
-      final call = result.data;
-      await call.accept();
-
-      final extra = (
-        call: result.data,
-        connectOptions: null,
-      );
-
-      _router.push(CallRoute($extra: extra).location, extra: extra);
-    }, failure: (error) {
-      debugPrint('Error consuming incoming call: $error');
-    });
-  }
-
   void _observeCallKitEvents() {
     final streamVideo = locator.get<StreamVideo>();
 
-    _compositeSubscription.add(
-      streamVideo.observeCoreCallKitEvents(
-        onCallAccepted: (callToJoin) {
-          // Navigate to the call screen.
-          final extra = (
-            call: callToJoin,
-            connectOptions: null,
-          );
+    // On mobile we depend on call kit notifications.
+    // On desktop and web they are (currently) not available, so we depend on a
+    // websocket which can receive a call when the app is open.
+    if (CurrentPlatform.isMobile) {
+      _compositeSubscription.add(
+        streamVideo.observeCoreCallKitEvents(
+          onCallAccepted: (callToJoin) {
+            // Navigate to the call screen.
+            final extra = (
+              call: callToJoin,
+              connectOptions: null,
+            );
 
-          _router.push(CallRoute($extra: extra).location, extra: extra);
-        },
-      ),
-    );
+            _router.push(CallRoute($extra: extra).location, extra: extra);
+          },
+        ),
+      );
+    } else {
+      _compositeSubscription.add(streamVideo.state.incomingCall.listen((call) {
+        if (call == null) return;
 
-    // UNCOMMENT THIS TO SHOW IN-APP INCOMING SCREEN
-    // _compositeSubscription.add(streamVideo.state.incomingCall.listen((call) {
-    //   if (call == null) return;
+        // Navigate to the call screen.
+        final extra = (
+          call: call,
+          connectOptions: null,
+        );
 
-    //   // Navigate to the call screen.
-    //   final extra = (
-    //     call: call,
-    //     connectOptions: null,
-    //   );
-
-    //   _router.push(CallRoute($extra: extra).location, extra: extra);
-    // }));
+        _router.push(CallRoute($extra: extra).location, extra: extra);
+      }));
+    }
   }
 
   _observeFcmMessages() {
@@ -190,14 +185,14 @@ class _StreamDogFoodingAppContentState
   }
 
   Future<void> _observeDeepLinks() async {
-    // The app was in the background.
-    if (!kIsWeb) {
-      final deepLinkSubscription = AppLinks().uriLinkStream.listen((uri) {
-        if (mounted) _handleDeepLink(uri);
-      });
+    if (kIsWeb) return;
 
-      _compositeSubscription.add(deepLinkSubscription);
-    }
+    // The app was in the background.
+    final deepLinkSubscription = AppLinks().uriLinkStream.listen((uri) {
+      if (mounted) _handleDeepLink(uri);
+    });
+
+    _compositeSubscription.add(deepLinkSubscription);
 
     // The app was terminated.
     try {
@@ -269,6 +264,11 @@ class _StreamDogFoodingAppContentState
       title: kAppName,
       routerConfig: _router,
       theme: _buildTheme(Brightness.dark),
+      supportedLocales: const [Locale('en'), Locale('nl')],
+      localizationsDelegates: [
+        CustomVideoLocalizationsNL.delegate,
+        ...StreamVideoFlutterLocalizations.localizationsDelegates,
+      ],
       builder: (context, child) {
         return child!;
       },

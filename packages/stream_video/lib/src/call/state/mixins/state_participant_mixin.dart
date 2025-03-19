@@ -2,6 +2,7 @@ import 'package:state_notifier/state_notifier.dart';
 
 import '../../../call_state.dart';
 import '../../../logger/impl/tagged_logger.dart';
+import '../../../models/call_participant_pin.dart';
 import '../../../models/call_track_state.dart';
 import '../../../models/viewport_visibility.dart';
 import '../../../sfu/data/models/sfu_track_type.dart';
@@ -21,7 +22,11 @@ mixin StateParticipantMixin on StateNotifier<CallState> {
       callParticipants: state.callParticipants.map((participant) {
         if (participant.sessionId == sessionId &&
             participant.userId == userId) {
-          return participant.copyWith(isPinned: pinned);
+          return participant.copyWithPin(
+            participantPin: pinned
+                ? CallParticipantPin(isLocalPin: true, pinnedAt: DateTime.now())
+                : null,
+          );
         }
 
         return participant;
@@ -245,8 +250,13 @@ mixin StateParticipantMixin on StateNotifier<CallState> {
 
   void participantSetCameraEnabled({
     required bool enabled,
+    bool? iOSMultitaskingCameraAccessEnabled,
   }) {
-    return _toggleTrackType(SfuTrackType.video, enabled);
+    return _toggleTrackType(
+      SfuTrackType.video,
+      enabled,
+      iOSMultitaskingCameraAccessEnabled: iOSMultitaskingCameraAccessEnabled,
+    );
   }
 
   void participantSetMicrophoneEnabled({
@@ -263,9 +273,11 @@ mixin StateParticipantMixin on StateNotifier<CallState> {
 
   void _toggleTrackType(
     SfuTrackType trackType,
-    bool enabled,
-  ) {
+    bool enabled, {
+    bool? iOSMultitaskingCameraAccessEnabled,
+  }) {
     state = state.copyWith(
+      iOSMultitaskingCameraAccessEnabled: iOSMultitaskingCameraAccessEnabled,
       callParticipants: state.callParticipants.map((participant) {
         if (participant.isLocal) {
           final publishedTracks = participant.publishedTracks;

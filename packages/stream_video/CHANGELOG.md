@@ -1,3 +1,71 @@
+## 0.8.4
+
+🔄 Changed
+* Updated the `device_info_plus` dependency to support a wider range of versions and resolve potential conflicts.
+* Deprecated the `setParticipantPinned()` method in the `Call` class — use `setParticipantPinnedLocally()` instead.
+* Replaced the `isPinned` parameter in `CallParticipantState` with a `pin` object, which now differentiates between local and remote pinning.
+
+✅ Added
+* Introduced a `membersLimit` parameter in the `getOrCreate()` and `join()` methods of the `Call` class to limit the number of members included in the response.
+* Added `setParticipantPinnedForEveryone()`, allowing users with the required permissions to pin participants for all. The `setParticipantPinned()` method has been replaced with `setParticipantPinnedLocally()`, which, as before, only pins participants locally.
+
+🔄 Changed
+* Update stream_webrtc_flutter and device_info_plus dependencies
+
+## 0.8.3
+
+✅ Added
+* Introduced `CallParticipantState.audioLevels`, which stores the last 10 audio levels of a participant.
+* Added `CallState.activeSpeakers` to retrieve a list of currently active speakers.
+* Enhanced `observeCoreCallKitEvents()` in `StreamVideo` with a new `CallPreferences? preferences` parameter, allowing for configuration of the accepted call.
+* Implemented localization support for the SDK's UI components. See the [documentation](https://getstream.io/video/docs/flutter/localization/) for details.
+* Added the ability to customize the screen share selector on desktop devices. See the [updated documentation](https://getstream.io/video/docs/flutter/advanced/screen_sharing/) for details.
+
+🐞 Fixed
+* Resolved various issues related to screen sharing on desktop devices.
+
+## 0.8.2
+
+✅ Added 
+* Added `CallPreferences? preferences` parameter to `consumeIncomingCall()` method in `StreamVideo` to make it possible to configure the consumed call.
+
+🐞 Fixed
+* Fixed remote participant roles array being empty after joining the call.
+* Fixed and issue with `thermal` package throwing exception on Android 9 and lower.
+
+## 0.8.1
+
+✅ Added 
+* Introduced the `onCallDisconnected` callback in `StreamCallContainer`, enabling customization of the default behavior, which invokes `Navigator.pop` upon call disconnection.
+* Made `registerDevice()` and `unregisterDevice()` methods publicly available in `PushNotificationManager`.
+
+## 0.8.0
+
+* Updated minimum Flutter version to 3.27.4
+
+✅ Added
+- Introduced `disposeAfterResolvingRinging()` and `consumeAndAcceptActiveCall()` methods in `StreamVideo` to simplify the ringing flow implementation.
+    - Refer to the updated [Incoming Call Documentation](https://getstream.io/video/docs/flutter/advanced/incoming-calls/overview/) or the [Ringing Tutorial](https://getstream.io/video/sdk/flutter/tutorial/ringing/) for more details.
+
+🔄 Changed
+- Deprecated the `backgroundVoipCallHandler` parameter in `StreamVideoPushNotificationManager`, as it is no longer required for iOS ringing to function in a terminated state.
+
+🐞 Fixed
+- **(Windows/Linux)** Fixes compilation issues caused by `stream_webrtc_flutter` package.
+
+## 0.7.2
+
+🐞 Fixed
+* Resolved an issue where accepting a second call while already on a call would not open the call screen correctly.
+* **(Web)** Fixed web compilation issues.
+* **(Web)** Addressed an issue where `battery_plus` and `thermal` packages were erroneously called on web.
+* **(iOS)** Fixed an issue where Picture-in-Picture mode was not ended when the call ended.
+* **(iOS)** Resolved an issue where CallKit calls sometimes were not terminated when the Stream call ended.
+* **(iOS)** Fixed a missing app icon on the CallKit screen when the app was in a terminated state.
+
+🔄 Changed
+* Deprecated the `handleVoipPushNotification()` method in the `StreamVideo` class. Use `handleRingingFlowNotifications()` instead.
+
 ## 0.7.1
 
 🐞 Fixed

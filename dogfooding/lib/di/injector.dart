@@ -1,6 +1,5 @@
 // 📦 Package imports:
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 // 🌎 Project imports:
 import 'package:flutter_dogfooding/core/repos/app_preferences.dart';
 import 'package:flutter_dogfooding/core/repos/user_chat_repository.dart';
@@ -10,9 +9,11 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stream_chat_flutter/stream_chat_flutter.dart' hide User;
 import 'package:stream_video_flutter/stream_video_flutter.dart';
+import 'package:stream_video_noise_cancellation/noise_cancellation_audio_processor.dart';
 import 'package:stream_video_push_notification/stream_video_push_notification.dart';
 
 import '../app/user_auth_controller.dart';
+import '../core/repos/custom_environment_loader.dart';
 import '../core/repos/token_service.dart';
 import '../core/repos/user_auth_repository.dart';
 import '../log_config.dart';
@@ -20,50 +21,13 @@ import '../utils/consts.dart';
 
 GetIt locator = GetIt.instance;
 
-@pragma('vm:entry-point')
-Future<void> _backgroundVoipCallHandler() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
-  final appPrefs = AppPreferences(prefs: prefs);
-
-  final apiKey = appPrefs.apiKey;
-  final userCredentials = appPrefs.userCredentials;
-
-  if (apiKey == null || userCredentials == null) {
-    return;
-  }
-
-  StreamVideo(
-    apiKey,
-    user: User(info: userCredentials.userInfo),
-    userToken: userCredentials.token.rawValue,
-    options: const StreamVideoOptions(
-      logPriority: Priority.verbose,
-      muteAudioWhenInBackground: true,
-      muteVideoWhenInBackground: true,
-      keepConnectionsAliveWhenInBackground: true,
-    ),
-    pushNotificationManagerProvider: StreamVideoPushNotificationManager.create(
-      iosPushProvider: const StreamVideoPushProvider.apn(
-        name: 'flutter-apn',
-      ),
-      androidPushProvider: const StreamVideoPushProvider.firebase(
-        name: 'flutter-firebase',
-      ),
-      pushParams: const StreamVideoPushParams(
-        appName: kAppName,
-        ios: IOSParams(iconName: 'IconMask'),
-      ),
-      registerApnDeviceToken: true,
-    ),
-  );
-}
-
 /// This class is responsible for registering dependencies
 /// and injecting them into the app.
 class AppInjector {
   // Register dependencies
-  static Future<void> init({Environment? forceEnvironment}) async {
+  static Future<void> init({
+    Environment? forceEnvironment,
+  }) async {
     // Google sign in
     locator.registerSingleton<GoogleSignIn>(
       GoogleSignIn(hostedDomain: 'getstream.io'),
@@ -80,7 +44,11 @@ class AppInjector {
     locator.registerSingleton<AppPreferences>(appPrefs);
 
     // Repositories
-    locator.registerSingleton(const TokenService());
+    locator.registerSingleton(
+      const TokenService(
+        customEnvironmentLoader: customEnvironmentLoader,
+      ),
+    );
 
     locator.registerFactoryParam<UserAuthRepository, User, TokenResponse>(
       (user, tokenResponse) {
@@ -192,11 +160,12 @@ StreamVideo _initStreamVideo(
     apiKey,
     user: user,
     tokenLoader: tokenLoader,
-    options: const StreamVideoOptions(
+    options: StreamVideoOptions(
       logPriority: Priority.verbose,
-      muteAudioWhenInBackground: true,
-      muteVideoWhenInBackground: true,
+      muteAudioWhenInBackground: false,
+      muteVideoWhenInBackground: false,
       keepConnectionsAliveWhenInBackground: true,
+      audioProcessor: NoiseCancellationAudioProcessor(),
     ),
     pushNotificationManagerProvider: StreamVideoPushNotificationManager.create(
       iosPushProvider: const StreamVideoPushProvider.apn(
@@ -209,7 +178,6 @@ StreamVideo _initStreamVideo(
         appName: kAppName,
         ios: IOSParams(iconName: 'IconMask'),
       ),
-      backgroundVoipCallHandler: _backgroundVoipCallHandler,
       registerApnDeviceToken: true,
     ),
   );

@@ -1,7 +1,7 @@
 import 'package:tart/tart.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../composed_version.dart';
+import '../../globals.dart';
 import '../../protobuf/video/sfu/models/models.pb.dart' as sfu_models;
 import '../../protobuf/video/sfu/signal_rpc/signal.pb.dart' as sfu;
 import '../../protobuf/video/sfu/signal_rpc/signal.pbtwirp.dart'
@@ -108,11 +108,43 @@ class SfuClient {
     }
   }
 
+  Future<Result<sfu.StartNoiseCancellationResponse>> startNoiseCancellation(
+    sfu.StartNoiseCancellationRequest request,
+  ) async {
+    try {
+      _logger.d(() => '[startNoiseCancellation] request: $request');
+      final response = await _client.startNoiseCancellation(
+        _withAuthHeaders(),
+        request,
+      );
+      _logger.v(() => '[startNoiseCancellation] response: $response');
+      return Result.success(response);
+    } catch (e, stk) {
+      return Result.failure(VideoErrors.compose(e, stk));
+    }
+  }
+
+  Future<Result<sfu.StopNoiseCancellationResponse>> stopNoiseCancellation(
+    sfu.StopNoiseCancellationRequest request,
+  ) async {
+    try {
+      _logger.d(() => '[stopNoiseCancellation] request: $request');
+      final response = await _client.stopNoiseCancellation(
+        _withAuthHeaders(),
+        request,
+      );
+      _logger.v(() => '[stopNoiseCancellation] response: $response');
+      return Result.success(response);
+    } catch (e, stk) {
+      return Result.failure(VideoErrors.compose(e, stk));
+    }
+  }
+
   Context _withAuthHeaders([Context? ctx]) {
     ctx ??= Context();
     return withHttpRequestHeaders(ctx, {
       'Authorization': 'Bearer $sfuToken',
-      'X-Stream-Client': streamClientVersion,
+      'X-Stream-Client': xStreamClientHeader,
       'x-client-request-id': const Uuid().v4(),
     });
   }

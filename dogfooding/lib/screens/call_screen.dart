@@ -12,7 +12,7 @@ import 'package:flutter_dogfooding/theme/app_palette.dart';
 import 'package:flutter_dogfooding/utils/feedback_dialog.dart';
 import 'package:flutter_dogfooding/widgets/badged_call_option.dart';
 import 'package:flutter_dogfooding/widgets/call_duration_title.dart';
-import 'package:flutter_dogfooding/widgets/settings_menu.dart';
+import 'package:flutter_dogfooding/widgets/settings_menu/settings_menu.dart';
 import 'package:flutter_dogfooding/widgets/share_call_card.dart';
 import 'package:stream_chat_flutter/stream_chat_flutter.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart' hide User;
@@ -22,6 +22,8 @@ import 'package:flutter_dogfooding/core/repos/user_chat_repository.dart';
 import '../app/user_auth_controller.dart';
 import '../di/injector.dart';
 import '../widgets/closed_captions_widget.dart';
+
+const _useCustomDesktopScreenShareOption = false;
 
 class CallScreen extends StatefulWidget {
   const CallScreen({
@@ -242,6 +244,7 @@ class _CallScreenState extends State<CallScreen> {
                   padding: const EdgeInsets.only(
                     top: 16,
                     left: 8,
+                    bottom: 8,
                   ),
                   color: Colors.black,
                   child: SafeArea(
@@ -263,6 +266,10 @@ class _CallScreenState extends State<CallScreen> {
                         enabledScreenShareBackgroundColor:
                             AppColorPalette.primary,
                         disabledScreenShareIcon: Icons.screen_share,
+                        desktopScreenSelectorBuilder:
+                            _useCustomDesktopScreenShareOption
+                                ? _customDesktopScreenShareSelector
+                                : null,
                       ),
                       ToggleMicrophoneOption(
                         call: call,
@@ -328,4 +335,31 @@ class ChatBottomSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+// This is an example of a bottom sheet that only allows the selection of a screen.
+// After tapping a screen the bottom sheet is directly closed and the screen is shared.
+Future<DesktopCapturerSource?> _customDesktopScreenShareSelector(
+    BuildContext context) {
+  final ScreenSelectorStateNotifier stateNotifier =
+      ScreenSelectorStateNotifier(sourceTypes: [SourceType.Screen]);
+
+  return showModalBottomSheet<DesktopCapturerSource?>(
+    context: context,
+    builder: (BuildContext context) {
+      return ValueListenableBuilder(
+        valueListenable: stateNotifier,
+        builder:
+            (BuildContext context, ScreenSelectorState value, Widget? child) =>
+                Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: ThumbnailGrid(
+            sources: value.sources.values.toList(),
+            selectedSource: value.selectedSource,
+            onSelectSource: (source) => Navigator.pop(context, source),
+          ),
+        ),
+      );
+    },
+  );
 }

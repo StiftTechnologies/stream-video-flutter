@@ -77,6 +77,7 @@ abstract class CoordinatorClient {
     bool? notify,
     bool? video,
     DateTime? startsAt,
+    int? membersLimit,
     open.CallSettingsRequest? settingsOverride,
     Map<String, Object> custom = const {},
   });
@@ -87,6 +88,7 @@ abstract class CoordinatorClient {
     bool? create,
     String? migratingFrom,
     bool? video,
+    int? membersLimit,
   });
 
   Future<Result<None>> acceptCall({required StreamCallCid cid});
@@ -172,13 +174,9 @@ abstract class CoordinatorClient {
   /// Stops transcription for the call described by the given [callCid].
   Future<Result<None>> stopTranscription(StreamCallCid callCid);
 
-  Future<Result<None>> startClosedCaptions(
-    StreamCallCid callCid,
-  );
+  Future<Result<None>> startClosedCaptions(StreamCallCid callCid);
 
-  Future<Result<None>> stopClosedCaptions(
-    StreamCallCid callCid,
-  );
+  Future<Result<None>> stopClosedCaptions(StreamCallCid callCid);
 
   /// Starts broadcasting for the call described by the given [callCid].
   Future<Result<String?>> startBroadcasting(StreamCallCid callCid);
@@ -234,8 +232,11 @@ abstract class CoordinatorClient {
   Future<Result<CallMetadata>> goLive({
     required StreamCallCid callCid,
     bool? startHls,
+    bool? startRtmpBroadcasts,
     bool? startRecording,
     bool? startTranscription,
+    bool? startClosedCaption,
+    String? transcriptionStorageName,
   });
 
   Future<Result<CallMetadata>> stopLive(StreamCallCid callCid);
@@ -268,5 +269,17 @@ abstract class CoordinatorClient {
     String? name,
     String? image,
     Map<String, Object> custom = const {},
+  });
+
+  Future<Result<None>> videoPin({
+    required StreamCallCid callCid,
+    required String sessionId,
+    required String userId,
+  });
+
+  Future<Result<None>> videoUnpin({
+    required StreamCallCid callCid,
+    required String sessionId,
+    required String userId,
   });
 }

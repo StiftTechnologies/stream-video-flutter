@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:uuid/uuid.dart';
 
 import '../../../../open_api/video/coordinator/api.dart' as open;
-import '../../../composed_version.dart';
+import '../../../globals.dart';
 import '../../../open_api/video/coordinator/api.dart';
 import '../../errors/video_error.dart';
 import '../../errors/video_error_composer.dart';
@@ -152,8 +152,10 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
       return const Result.success(none);
     }
 
-    _logger.d(() =>
-        '[waitUntilConnected] user.id: ${_user?.id}, current state: ${_connectionState.value},');
+    _logger.d(
+      () =>
+          '[waitUntilConnected] user.id: ${_user?.id}, current state: ${_connectionState.value},',
+    );
     return _connectionState
         .firstWhere(
       (it) => it.isConnected,
@@ -440,6 +442,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
     bool? notify,
     bool? video,
     DateTime? startsAt,
+    int? membersLimit,
     CallSettingsRequest? settingsOverride,
     Map<String, Object> custom = const {},
   }) async {
@@ -467,6 +470,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
             settingsOverride: settingsOverride,
             custom: custom,
           ),
+          membersLimit: membersLimit,
           ring: ringing,
           notify: notify,
           video: video,
@@ -505,6 +509,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
     bool? create,
     String? migratingFrom,
     bool? video,
+    int? membersLimit,
   }) async {
     try {
       _logger.d(
@@ -526,6 +531,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
           create: create,
           ring: ringing,
           location: location,
+          membersLimit: membersLimit,
           migratingFrom: migratingFrom,
           video: video,
         ),
@@ -675,6 +681,64 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
       );
       if (result == null) {
         return Result.error('requestPermissions result is null');
+      }
+      return const Result.success(none);
+    } catch (e, stk) {
+      return Result.failure(VideoErrors.compose(e, stk));
+    }
+  }
+
+  @override
+  Future<Result<None>> videoPin({
+    required StreamCallCid callCid,
+    required String sessionId,
+    required String userId,
+  }) async {
+    try {
+      final connectionResult = await _waitUntilConnected();
+      if (connectionResult is Failure) {
+        _logger.e(() => '[videoPin] no connection established');
+        return connectionResult;
+      }
+      final result = await _defaultApi.videoPin(
+        callCid.type.value,
+        callCid.id,
+        open.PinRequest(
+          sessionId: sessionId,
+          userId: userId,
+        ),
+      );
+      if (result == null) {
+        return Result.error('[videoPin] result is null');
+      }
+      return const Result.success(none);
+    } catch (e, stk) {
+      return Result.failure(VideoErrors.compose(e, stk));
+    }
+  }
+
+  @override
+  Future<Result<None>> videoUnpin({
+    required StreamCallCid callCid,
+    required String sessionId,
+    required String userId,
+  }) async {
+    try {
+      final connectionResult = await _waitUntilConnected();
+      if (connectionResult is Failure) {
+        _logger.e(() => '[videoUnpin] no connection established');
+        return connectionResult;
+      }
+      final result = await _defaultApi.videoUnpin(
+        callCid.type.value,
+        callCid.id,
+        open.UnpinRequest(
+          sessionId: sessionId,
+          userId: userId,
+        ),
+      );
+      if (result == null) {
+        return Result.error('[videoUnpin] result is null');
       }
       return const Result.success(none);
     } catch (e, stk) {
@@ -971,7 +1035,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   @override
   Future<Result<QueriedMembers>> queryMembers({
     required StreamCallCid callCid,
-    required Map<String, Object> filterConditions,
+    Map<String, Object> filterConditions = const {},
     String? next,
     String? prev,
     List<open.SortParamRequest> sorts = const [],
@@ -1110,8 +1174,11 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   Future<Result<CallMetadata>> goLive({
     required StreamCallCid callCid,
     bool? startHls,
+    bool? startRtmpBroadcasts,
     bool? startRecording,
     bool? startTranscription,
+    bool? startClosedCaption,
+    String? transcriptionStorageName,
   }) async {
     try {
       final connectionResult = await _waitUntilConnected();
@@ -1126,6 +1193,9 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
           startHls: startHls,
           startRecording: startRecording,
           startTranscription: startTranscription,
+          startClosedCaption: startClosedCaption,
+          startRtmpBroadcasts: startRtmpBroadcasts,
+          transcriptionStorageName: transcriptionStorageName,
         ),
       );
       if (result == null) {
@@ -1366,7 +1436,7 @@ class _Authentication extends open.Authentication {
     if (userToken.rawValue.isNotEmpty) {
       headerParams['Authorization'] = userToken.rawValue;
     }
-    headerParams['X-Stream-Client'] = streamClientVersion;
+    headerParams['X-Stream-Client'] = xStreamClientHeader;
     headerParams['x-client-request-id'] = const Uuid().v4();
   }
 }

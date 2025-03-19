@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -42,16 +40,10 @@ class MethodChannelStreamVideoPushNotification
   Future<void> init(
     Map<String, dynamic> pushParams,
     CallerCustomizationFunction? callerCustomizationCallback,
-    BackgroundVoipCallHandler? backgroundVoipCallHandler,
   ) async {
     if (!CurrentPlatform.isIos) return;
 
     this.callerCustomizationCallback = callerCustomizationCallback;
-    if (backgroundVoipCallHandler != null) {
-      final backgroundCallback =
-          PluginUtilities.getCallbackHandle(backgroundVoipCallHandler);
-      pushParams['callbackHandler'] = backgroundCallback?.toRawHandle();
-    }
     await methodChannel.invokeMethod<String>('initData', pushParams);
   }
 

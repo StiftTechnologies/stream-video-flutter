@@ -5,8 +5,8 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:thermal/thermal.dart';
 
 import '../../../protobuf/video/sfu/signal_rpc/signal.pb.dart' as sfu;
+import '../../globals.dart';
 import '../../protobuf/video/sfu/models/models.pb.dart' as sfu_models;
-import '../../version.g.dart';
 import '../extensions/thermal_status_ext.dart';
 import '../models/models.dart';
 import '../platform_detector/platform_detector.dart';
@@ -24,10 +24,14 @@ class SfuStatsReporter {
     final thermalStatusAvailable =
         CurrentPlatform.isAndroid || CurrentPlatform.isIos;
     if (thermalStatusAvailable) {
-      _thermalStatusSubscription =
-          Thermal().onThermalStatusChanged.listen((ThermalStatus status) {
-        _thermalStatus = status;
-      });
+      try {
+        _thermalStatusSubscription =
+            Thermal().onThermalStatusChanged.listen((ThermalStatus status) {
+          _thermalStatus = status;
+        });
+      } catch (e) {
+        // ignore: thermal status not available
+      }
     }
 
     _mediaDeviceSubscription =

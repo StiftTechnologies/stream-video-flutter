@@ -1,3 +1,30 @@
+## 0.8.4
+* Sync version with `stream_video_flutter` 0.8.4
+
+## 0.8.3
+* Sync version with `stream_video_flutter` 0.8.3
+
+## 0.8.2
+* Sync version with `stream_video_flutter` 0.8.2
+
+## 0.8.1
+* Sync version with `stream_video_flutter` 0.8.1
+
+## 0.8.0
+
+* Updated minimum Flutter version to 3.27.4
+    * Note: If you updated Flutter version and are using `flutterfire_cli` for push notifications you might need to reactivate it by running: `dart pub global activate flutterfire_cli`.
+
+🐞 Fixed
+- **(Windows/Linux)** Fixes compilation issues caused by `stream_webrtc_flutter` package.
+
+## 0.7.2
+
+🐞 Fixed
+* Resolved an issue where accepting a second call while already on a call would not open the call screen correctly.
+* **(iOS)** Resolved an issue where CallKit calls sometimes were not terminated when the Stream call ended.
+* **(iOS)** Fixed a missing app icon on the CallKit screen when the app was in a terminated state.
+
 ## 0.7.1
 * Sync version with `stream_video_flutter` 0.7.1
 

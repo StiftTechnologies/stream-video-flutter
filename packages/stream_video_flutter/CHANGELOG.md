@@ -1,3 +1,84 @@
+## 0.8.4
+
+🐞 Fixed
+* (iOS) Fixed an issue where Picture-in-Picture (PiP) would not stop when bringing the app back to the foreground.
+
+🔄 Changed
+* Updated the `device_info_plus` dependency to support a wider range of versions and resolve potential conflicts.
+* Deprecated the `setParticipantPinned()` method in the `Call` class — use `setParticipantPinnedLocally()` instead.
+* Replaced the `isPinned` parameter in `CallParticipantState` with a `pin` object, which now differentiates between local and remote pinning.
+
+✅ Added
+* Introduced a `membersLimit` parameter in the `getOrCreate()` and `join()` methods of the `Call` class to limit the number of members included in the response.
+* Added `setParticipantPinnedForEveryone()`, allowing users with the required permissions to pin participants for all. The `setParticipantPinned()` method has been replaced with `setParticipantPinnedLocally()`, which, as before, only pins participants locally.
+
+🔄 Changed
+* Update stream_webrtc_flutter and device_info_plus dependencies
+
+## 0.8.3
+
+✅ Added
+* Introduced `CallParticipantState.audioLevels`, which stores the last 10 audio levels of a participant.
+* Added `CallState.activeSpeakers` to retrieve a list of currently active speakers.
+* Enhanced `observeCoreCallKitEvents()` in `StreamVideo` with a new `CallPreferences? preferences` parameter, allowing for configuration of the accepted call.
+* Implemented localization support for the SDK's UI components. See the [documentation](https://getstream.io/video/docs/flutter/localization/) for details.
+* Added the ability to customize the screen share selector on desktop devices. See the [updated documentation](https://getstream.io/video/docs/flutter/advanced/screen_sharing/) for details.
+
+🐞 Fixed
+* Resolved various issues related to screen sharing on desktop devices.
+
+## 0.8.2
+
+✅ Added 
+* Added `CallPreferences? preferences` parameter to `consumeIncomingCall()` method in `StreamVideo` to make it possible to configure the consumed call.
+
+🐞 Fixed
+* Fixed remote participant roles array being empty after joining the call.
+* Fixed and issue with `thermal` package throwing exception on Android 9 and lower.
+
+## 0.8.1
+
+✅ Added 
+* Introduced the `onCallDisconnected` callback in `StreamCallContainer`, enabling customization of the default behavior, which invokes `Navigator.pop` upon call disconnection.
+* Made `registerDevice()` and `unregisterDevice()` methods publicly available in `PushNotificationManager`.
+
+## 0.8.0
+
+* Updated minimum Flutter version to 3.27.4
+    * Note: If you updated Flutter version and are using `flutterfire_cli` for push notifications you might need to reactivate it by running: `dart pub global activate flutterfire_cli`.
+
+✅ Added
+* Introduced `disposeAfterResolvingRinging()` and `consumeAndAcceptActiveCall()` methods in `StreamVideo` to simplify the ringing flow implementation.
+    - Refer to the updated [Incoming Call Documentation](https://getstream.io/video/docs/flutter/advanced/incoming-calls/overview/) or the [Ringing Tutorial](https://getstream.io/video/sdk/flutter/tutorial/ringing/) for more details.
+
+🔄 Changed
+* Deprecated the `backgroundVoipCallHandler` parameter in `StreamVideoPushNotificationManager`, as it is no longer required for iOS ringing to function in a terminated state.
+
+🐞 Fixed
+* Center alignment of buttons in `StreamLobbyVideo` to support more screen sizes.
+* **(Windows/Linux)** Fixes compilation issues caused by `stream_webrtc_flutter` package.
+
+🚧 (Breaking) Picture-in-Picture (PiP) Improvements & Fixes
+* **Fixed:** PiP not working on Android 15.
+* **Fixed:** PiP not displaying other participants' screen sharing.
+* **Added support for iOS 18 Multitasking Camera Access changes.** From **iOS 18**, you can easily enable camera usage while the app is in the background (e.g., for PiP). Refer to [Picture in Picture documentation](https://getstream.io/video/docs/flutter/advanced/picture_in_picture/) for details.
+* Added `disablePictureInPictureWhenScreenSharing` configuration option to `PictureInPictureConfiguration`. When **true** (default), PiP is disabled if the local device is screen sharing.
+* ❗ Breaking Change: `ignoreLocalParticipantVideo` parameter in `IOSPictureInPictureConfiguration` is replaced by `includeLocalParticipantVideo`. By default, local video **is enabled** and will appear in PiP mode if the iOS device supports **Multitasking Camera Access**.
+* ❗ Breaking Change: `ignoreLocalParticipantVideo` parameter in `StreamPictureInPictureUiKitView` is also replaced by `includeLocalParticipantVideo`.
+
+## 0.7.2
+
+🐞 Fixed
+* Resolved an issue where accepting a second call while already on a call would not open the call screen correctly. [#840](https://github.com/GetStream/stream-video-flutter/pull/840) and [#834](https://github.com/GetStream/stream-video-flutter/pull/834)
+* **(Web)** Fixed web compilation issues. [#832](https://github.com/GetStream/stream-video-flutter/pull/832)
+* **(Web)** Addressed an issue where `battery_plus` and `thermal` packages were erroneously called on web. [#837](https://github.com/GetStream/stream-video-flutter/pull/837)
+* **(iOS)** Fixed an issue where Picture-in-Picture mode was not ended when the call ended. [#840](https://github.com/GetStream/stream-video-flutter/pull/840)
+* **(iOS)** Resolved an issue where CallKit calls sometimes were not terminated when the Stream call ended. [#840](https://github.com/GetStream/stream-video-flutter/pull/840)
+* **(iOS)** Fixed a missing app icon on the CallKit screen when the app was in a terminated state. [#841](https://github.com/GetStream/stream-video-flutter/pull/841)
+
+🔄 Changed
+* Deprecated the `handleVoipPushNotification()` method in the `StreamVideo` class. Use `handleRingingFlowNotifications()` instead.
+
 ## 0.7.1
 
 🐞 Fixed

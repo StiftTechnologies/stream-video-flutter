@@ -3,10 +3,12 @@ import 'package:state_notifier/state_notifier.dart';
 
 import '../../../call_state.dart';
 import '../../../logger/impl/tagged_logger.dart';
+import '../../../models/call_participant_pin.dart';
 import '../../../models/call_participant_state.dart';
 import '../../../models/call_preferences.dart';
 import '../../../models/call_track_state.dart';
 import '../../../sfu/data/events/sfu_events.dart';
+import '../../../sfu/data/models/sfu_pin.dart';
 import '../../../sfu/sfu_extensions.dart';
 
 final _logger = taggedLogger(tag: 'SV:CoordNotifier');
@@ -106,7 +108,7 @@ mixin StateSfuMixin on StateNotifier<CallState> {
               level.sessionId == participant.sessionId;
         });
         if (levelInfo != null) {
-          return participant.copyWith(
+          return participant.copyWithUpdatedAudioLevels(
             audioLevel: levelInfo.level,
             isSpeaking: levelInfo.isSpeaking,
           );
@@ -140,6 +142,33 @@ mixin StateSfuMixin on StateNotifier<CallState> {
     );
   }
 
+  void sfuPinsUpdated(
+    List<SfuPin> pins,
+  ) {
+    state = state.copyWith(
+      callParticipants: state.callParticipants.map((participant) {
+        final pin = pins.firstWhereOrNull((it) {
+          return it.userId == participant.userId &&
+              it.sessionId == participant.sessionId;
+        });
+        if (pin != null) {
+          return participant.copyWithPin(
+            participantPin: CallParticipantPin(
+              isLocalPin: false,
+              pinnedAt: DateTime.now(),
+            ),
+          );
+        } else if (participant.pin != null && !participant.pin!.isLocalPin) {
+          return participant.copyWithPin(
+            participantPin: null,
+          );
+        } else {
+          return participant;
+        }
+      }).toList(),
+    );
+  }
+
   void sfuConnectionQualityChanged(
     SfuConnectionQualityChangedEvent event,
   ) {
@@ -169,7 +198,7 @@ mixin StateSfuMixin on StateNotifier<CallState> {
     final isLocal = state.currentUserId == event.participant.userId;
     final participant = CallParticipantState(
       userId: event.participant.userId,
-      roles: const [],
+      roles: event.participant.roles,
       name: event.participant.userName,
       custom: event.participant.custom,
       image: event.participant.userImage,
@@ -207,17 +236,18 @@ mixin StateSfuMixin on StateNotifier<CallState> {
     final participants = state.callParticipants.map((it) {
       if (it.userId == participant.userId &&
           it.sessionId == participant.sessionId) {
-        return it.copyWith(
-          name: participant.userName,
-          custom: participant.custom,
-          image: participant.userImage,
-          trackIdPrefix: participant.trackLookupPrefix,
-          audioLevel: participant.audioLevel,
-          isSpeaking: participant.isSpeaking,
-          isDominantSpeaker: participant.isDominantSpeaker,
-          connectionQuality: participant.connectionQuality,
-          roles: participant.roles,
-        );
+        return it
+            .copyWith(
+              name: participant.userName,
+              custom: participant.custom,
+              image: participant.userImage,
+              trackIdPrefix: participant.trackLookupPrefix,
+              isSpeaking: participant.isSpeaking,
+              isDominantSpeaker: participant.isDominantSpeaker,
+              connectionQuality: participant.connectionQuality,
+              roles: participant.roles,
+            )
+            .copyWithUpdatedAudioLevels(audioLevel: participant.audioLevel);
       } else {
         return it;
       }

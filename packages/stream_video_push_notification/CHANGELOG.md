@@ -1,3 +1,11 @@
+## 0.9.1
+* Sync version with `stream_video_flutter` 0.9.1
+
+## 0.9.0
+
+🐞 Fixed
+* (iOS) Synchronized CallKit microphone mute state with the actual call mute state.
+
 ## 0.8.4
 * Sync version with `stream_video_flutter` 0.8.4
 

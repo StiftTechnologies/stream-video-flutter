@@ -176,7 +176,19 @@ class StreamVideoPushNotificationManager implements PushNotificationManager {
       _idCallKit,
       onCallEvent.listen(
         (event) {
-          if (event is ActionCallIncoming) {
+          if (event is ActionCallToggleMute) {
+            {
+              _logger.d(() =>
+                  '[onCallEvent] ActionCallToggleMute received: uuid=${event.uuid}, isMuted=${event.isMuted}');
+              final call = activeCall;
+              if (call != null) {
+                call.setMicrophoneEnabled(enabled: !event.isMuted);
+              } else {
+                _logger.w(
+                    () => '[onCallEvent] Cannot toggle mute: no active call');
+              }
+            }
+          } else if (event is ActionCallIncoming) {
             if (!client.isConnected) {
               client.openConnection();
             }
@@ -407,6 +419,26 @@ class StreamVideoPushNotificationManager implements PushNotificationManager {
   }
 
   @override
+  Future<void> setCallMutedByCid(String cid, bool isMuted) async {
+    // Muting call on CallKit screen
+    if (!CurrentPlatform.isIos) {
+      return;
+    }
+
+    final activeCalls = await this.activeCalls();
+    final calls = activeCalls
+        .where((call) => call.callCid == cid && call.uuid != null)
+        .toList();
+
+    for (final call in calls) {
+      // Silence events to avoid infinite loop
+      FlutterCallkitIncoming.silenceEvents();
+      await FlutterCallkitIncoming.muteCall(call.uuid!, isMuted: isMuted);
+      FlutterCallkitIncoming.unsilenceEvents();
+    }
+  }
+
+  @override
   Future<String?> getDevicePushTokenVoIP() async {
     if (CurrentPlatform.isIos) {
       return await StreamTokenProvider.getVoIPToken();
@@ -452,6 +484,9 @@ const _defaultPushParams = StreamVideoPushParams(
     isShowCallback: true,
     subtitle: 'Missed call',
     callbackText: 'Call back',
+  ),
+  callingNotification: NotificationParams(
+    showNotification: false,
   ),
   android: AndroidParams(
     isCustomNotification: true,

@@ -1,6 +1,7 @@
 library stream_video;
 
 export 'open_api/video/coordinator/api.dart';
+export 'src/audio_processing/audio_processor.dart';
 export 'src/call/call.dart';
 export 'src/call/call_connect_options.dart';
 export 'src/call/call_events.dart';
@@ -18,6 +19,7 @@ export 'src/logger/impl/tagged_logger.dart';
 export 'src/logger/stream_log.dart';
 export 'src/logger/stream_logger.dart';
 export 'src/models/models.dart';
+export 'src/network_monitor_settings.dart';
 export 'src/platform_detector/platform_detector.dart';
 export 'src/push_notification/push_notification_manager.dart';
 export 'src/retry/retry_policy.dart';

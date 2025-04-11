@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:async/async.dart' as async;
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
+import 'package:meta/meta.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 
 import '../globals.dart';
 import '../open_api/video/coordinator/api.dart';
+import 'audio_processing/audio_processor.dart';
 import 'call/call.dart';
 import 'call/call_reject_reason.dart';
 import 'call/call_ringing_state.dart';
@@ -42,6 +45,7 @@ import 'models/push_provider.dart';
 import 'models/queried_calls.dart';
 import 'models/user.dart';
 import 'models/user_info.dart';
+import 'network_monitor_settings.dart';
 import 'platform_detector/platform_detector.dart';
 import 'push_notification/push_notification_manager.dart';
 import 'retry/retry_policy.dart';
@@ -139,6 +143,20 @@ class StreamVideo extends Disposable {
     PNManagerProvider? pushNotificationManagerProvider,
   })  : _options = options,
         _state = MutableClientState(user) {
+    _networkMonitor =
+        _options.networkMonitorSettings.internetConnectionInstance ??
+            InternetConnection.createInstance(
+              checkInterval: _options.networkMonitorSettings.checkInterval,
+              useDefaultOptions:
+                  _options.networkMonitorSettings.customEndpoints.isEmpty,
+              customCheckOptions:
+                  _options.networkMonitorSettings.customEndpoints.isEmpty
+                      ? null
+                      : _options.networkMonitorSettings.customEndpoints
+                          .map((option) => option.toInternetCheckOption())
+                          .toList(),
+            );
+
     _client = buildCoordinatorClient(
       user: user,
       apiKey: apiKey,
@@ -147,6 +165,7 @@ class StreamVideo extends Disposable {
       retryPolicy: _options.retryPolicy,
       rpcUrl: _options.coordinatorRpcUrl,
       wsUrl: _options.coordinatorWsUrl,
+      networkMonitor: _networkMonitor,
     );
 
     // Initialize the push notification manager if the provider is provided.
@@ -231,7 +250,9 @@ class StreamVideo extends Disposable {
 
   final _tokenManager = TokenManager();
   final _subscriptions = Subscriptions();
+
   late final CoordinatorClient _client;
+  late final InternetConnection _networkMonitor;
   late final PushNotificationManager? pushNotificationManager;
 
   bool _mutedCameraByStateChange = false;
@@ -417,7 +438,6 @@ class StreamVideo extends Disposable {
         event.data.ringing) {
       _logger.v(() => '[onCoordinatorEvent] onCallRinging: ${event.data}');
       final call = _makeCallFromRinging(data: event.data);
-
       _state.incomingCall.value = call;
     } else if (event is CoordinatorConnectedEvent) {
       _logger.i(() => '[onCoordinatorEvent] connected ${event.userId}');
@@ -501,9 +521,10 @@ class StreamVideo extends Disposable {
       ),
       coordinatorClient: _client,
       streamVideo: this,
+      networkMonitor: _networkMonitor,
       retryPolicy: _options.retryPolicy,
       sdpPolicy: _options.sdpPolicy,
-      preferences: preferences,
+      preferences: preferences ?? _options.defaultCallPreferences,
     );
   }
 
@@ -515,9 +536,10 @@ class StreamVideo extends Disposable {
       data: data,
       coordinatorClient: _client,
       streamVideo: this,
+      networkMonitor: _networkMonitor,
       retryPolicy: _options.retryPolicy,
       sdpPolicy: _options.sdpPolicy,
-      preferences: preferences,
+      preferences: preferences ?? _options.defaultCallPreferences,
     );
   }
 
@@ -693,19 +715,26 @@ class StreamVideo extends Disposable {
     final cid = event.data.callCid;
     if (uuid == null || cid == null) return;
 
-    final call = await consumeIncomingCall(
+    final consumeResult = await consumeIncomingCall(
       uuid: uuid,
       cid: cid,
       preferences: callPreferences,
     );
-    final callToJoin = call.getDataOrNull();
+
+    if (consumeResult.isFailure) {
+      _logger.w(
+        () => '[onCallAccept] error consuming incoming call}',
+      );
+      return;
+    }
+
+    final callToJoin = consumeResult.getDataOrNull();
     if (callToJoin == null) return;
 
     final acceptResult = await callToJoin.accept();
 
-    // Return if cannot accept call
     if (acceptResult.isFailure) {
-      _logger.d(() => '[onCallAccept] error accepting call: $call');
+      _logger.d(() => '[onCallAccept] error accepting call: $callToJoin');
       return;
     }
 
@@ -923,8 +952,13 @@ class StreamVideo extends Disposable {
       );
     }
 
+    // If call was already created by consuming ringing event, use the same instance.
     if (_state.incomingCall.valueOrNull?.callCid.value == cid) {
-      return Result.success(_state.incomingCall.value!);
+      final call = _state.incomingCall.value!;
+      if (preferences != null) {
+        call.updateCallPreferences(preferences);
+      }
+      return Result.success(call);
     }
 
     final callCid = StreamCallCid(cid: cid);
@@ -939,10 +973,38 @@ class StreamVideo extends Disposable {
         ringing: true,
         metadata: callResult.data.metadata,
       ),
-      preferences: preferences,
+      preferences: preferences ?? _options.defaultCallPreferences,
     );
 
     return Result.success(call);
+  }
+
+  @internal
+  bool isAudioProcessorConfigured() {
+    return _options.audioProcessor != null;
+  }
+
+  @internal
+  Future<Result<bool>> isAudioProcessingEnabled() async {
+    return await _options.audioProcessor?.isEnabled() ??
+        const Result.failure(VideoError(message: 'No audio processor found.'));
+  }
+
+  @internal
+  Future<Result<None>> setAudioProcessingEnabled(bool enabled) async {
+    return await _options.audioProcessor?.setEnabled(enabled) ??
+        const Result.failure(VideoError(message: 'No audio processor found.'));
+  }
+
+  /// This method returns true if the iOS device supports Apple's Neural Engine
+  /// or if an Android device has the FEATURE_AUDIO_PRO feature enabled.
+  /// Devices with this capability are better suited for handling noise cancellation efficiently.
+  ///
+  /// Returns false on other platforms.
+  Future<Result<bool>> deviceSupportsAdvancedAudioProcessing() async {
+    return await _options.audioProcessor
+            ?.deviceSupportsAdvancedAudioProcessing() ??
+        const Result.failure(VideoError(message: 'No audio processor found.'));
   }
 }
 
@@ -954,6 +1016,7 @@ CoordinatorClient buildCoordinatorClient({
   required TokenManager tokenManager,
   required RetryPolicy retryPolicy,
   required LatencySettings latencySettings,
+  required InternetConnection networkMonitor,
 }) {
   streamLog.i(_tag, () => '[buildCoordinatorClient] rpcUrl: $rpcUrl');
   streamLog.i(_tag, () => '[buildCoordinatorClient] wsUrl: $wsUrl');
@@ -964,6 +1027,7 @@ CoordinatorClient buildCoordinatorClient({
       apiKey: apiKey,
       tokenManager: tokenManager,
       latencyService: LatencyService(settings: latencySettings),
+      networkMonitor: networkMonitor,
       retryPolicy: retryPolicy,
       rpcUrl: rpcUrl,
       wsUrl: wsUrl,
@@ -1039,7 +1103,9 @@ class StreamVideoOptions {
     this.coordinatorWsUrl = _defaultCoordinatorWsUrl,
     this.latencySettings = const LatencySettings(),
     this.retryPolicy = const RetryPolicy(),
+    this.defaultCallPreferences,
     this.sdpPolicy = const SdpPolicy(spdEditingEnabled: false),
+    this.audioProcessor,
     this.logPriority = Priority.none,
     this.logHandlerFunction = _defaultLogHandler,
     this.muteVideoWhenInBackground = false,
@@ -1047,6 +1113,7 @@ class StreamVideoOptions {
     this.autoConnect = true,
     this.includeUserDetailsForAutoConnect = true,
     this.keepConnectionsAliveWhenInBackground = false,
+    this.networkMonitorSettings = const NetworkMonitorSettings(),
   });
 
   final String coordinatorRpcUrl;
@@ -1055,6 +1122,7 @@ class StreamVideoOptions {
 
   /// Returns the current [RetryPolicy].
   final RetryPolicy retryPolicy;
+  final CallPreferences? defaultCallPreferences;
 
   /// Returns the current [SdpPolicy].
   final SdpPolicy sdpPolicy;
@@ -1062,9 +1130,14 @@ class StreamVideoOptions {
   final Priority logPriority;
   final LogHandlerFunction logHandlerFunction;
 
+  final AudioProcessor? audioProcessor;
+
   final bool muteVideoWhenInBackground;
   final bool muteAudioWhenInBackground;
   final bool autoConnect;
   final bool includeUserDetailsForAutoConnect;
   final bool keepConnectionsAliveWhenInBackground;
+
+  /// Returns the current [NetworkMonitorSettings].
+  final NetworkMonitorSettings networkMonitorSettings;
 }

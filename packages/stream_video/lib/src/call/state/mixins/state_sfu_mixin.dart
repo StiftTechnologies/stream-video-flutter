@@ -5,7 +5,6 @@ import '../../../call_state.dart';
 import '../../../logger/impl/tagged_logger.dart';
 import '../../../models/call_participant_pin.dart';
 import '../../../models/call_participant_state.dart';
-import '../../../models/call_preferences.dart';
 import '../../../models/call_track_state.dart';
 import '../../../sfu/data/events/sfu_events.dart';
 import '../../../sfu/data/models/sfu_pin.dart';
@@ -14,8 +13,6 @@ import '../../../sfu/sfu_extensions.dart';
 final _logger = taggedLogger(tag: 'SV:CoordNotifier');
 
 mixin StateSfuMixin on StateNotifier<CallState> {
-  CallPreferences get callPreferences;
-
   void sfuParticipantLeft(
     SfuParticipantLeftEvent event,
   ) {
@@ -195,7 +192,9 @@ mixin StateSfuMixin on StateNotifier<CallState> {
     _logger.d(
       () => '[sfuParticipantJoined] ${state.sessionId}; event: $event',
     );
-    final isLocal = state.currentUserId == event.participant.userId;
+    final isLocal = state.currentUserId == event.participant.userId &&
+        state.sessionId == event.participant.sessionId;
+
     final participant = CallParticipantState(
       userId: event.participant.userId,
       roles: event.participant.roles,

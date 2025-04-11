@@ -12,7 +12,7 @@ import 'package:flutter_dogfooding/theme/app_palette.dart';
 import 'package:flutter_dogfooding/utils/feedback_dialog.dart';
 import 'package:flutter_dogfooding/widgets/badged_call_option.dart';
 import 'package:flutter_dogfooding/widgets/call_duration_title.dart';
-import 'package:flutter_dogfooding/widgets/settings_menu.dart';
+import 'package:flutter_dogfooding/widgets/settings_menu/settings_menu.dart';
 import 'package:flutter_dogfooding/widgets/share_call_card.dart';
 import 'package:stream_chat_flutter/stream_chat_flutter.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart' hide User;
@@ -141,6 +141,17 @@ class _CallScreenState extends State<CallScreen> {
           onCancelCallTap: () async {
             await widget.call.reject(reason: CallRejectReason.cancel());
           },
+          onCallDisconnected: (disconnectedProperties) {
+            final reason = disconnectedProperties.reason;
+
+            Navigator.of(context).pop();
+
+            if (reason is DisconnectReasonCancelled ||
+                reason is DisconnectReasonEnded ||
+                reason is DisconnectReasonLastParticipantLeft) {
+              showFeedbackDialog(context, call: widget.call);
+            }
+          },
           callContentBuilder: (
             BuildContext context,
             Call call,
@@ -211,10 +222,6 @@ class _CallScreenState extends State<CallScreen> {
                 return CallAppBar(
                   call: call,
                   leadingWidth: 120,
-                  onLeaveCallTap: () {
-                    call.leave();
-                    showFeedbackDialog(context, call: call);
-                  },
                   leading: Row(
                     children: [
                       ToggleLayoutOption(

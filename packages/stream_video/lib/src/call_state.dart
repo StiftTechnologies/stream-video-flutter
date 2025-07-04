@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import 'package:meta/meta.dart';
 
 import 'call/call_type.dart';
+import 'models/call_member_state.dart';
 import 'models/models.dart';
 import 'webrtc/rtc_media_device/rtc_media_device.dart';
 
@@ -18,7 +19,7 @@ class CallState extends Equatable {
       preferences: preferences,
       currentUserId: currentUserId,
       callCid: callCid,
-      createdByUserId: '',
+      createdByUser: CallUser.empty(),
       isRingingFlow: false,
       sessionId: '',
       status: CallStatus.idle(),
@@ -36,11 +37,13 @@ class CallState extends Equatable {
       audioOutputDevice: null,
       ownCapabilities: List.unmodifiable(const []),
       callParticipants: List.unmodifiable(const []),
+      callMembers: List.unmodifiable(const []),
       capabilitiesByRole: const {},
       createdAt: null,
       updatedAt: null,
       startsAt: null,
       endedAt: null,
+      startedAt: null,
       liveStartedAt: null,
       liveEndedAt: null,
       timerEndsAt: null,
@@ -60,7 +63,7 @@ class CallState extends Equatable {
     required this.preferences,
     required this.currentUserId,
     required this.callCid,
-    required this.createdByUserId,
+    required this.createdByUser,
     required this.isRingingFlow,
     required this.sessionId,
     required this.status,
@@ -75,6 +78,7 @@ class CallState extends Equatable {
     required this.rtmpIngress,
     required this.ownCapabilities,
     required this.callParticipants,
+    required this.callMembers,
     required this.capabilitiesByRole,
     required this.videoInputDevice,
     required this.audioInputDevice,
@@ -83,6 +87,7 @@ class CallState extends Equatable {
     required this.updatedAt,
     required this.startsAt,
     required this.endedAt,
+    required this.startedAt,
     required this.liveStartedAt,
     required this.liveEndedAt,
     required this.timerEndsAt,
@@ -100,7 +105,7 @@ class CallState extends Equatable {
   final CallPreferences preferences;
   final String currentUserId;
   final StreamCallCid callCid;
-  final String createdByUserId;
+  final CallUser createdByUser;
   final bool isRingingFlow;
   final String sessionId;
   final CallStatus status;
@@ -118,11 +123,13 @@ class CallState extends Equatable {
   final RtcMediaDevice? audioOutputDevice;
   final List<CallPermission> ownCapabilities;
   final List<CallParticipantState> callParticipants;
+  final List<CallMemberState> callMembers;
   final Map<String, List<String>> capabilitiesByRole;
   final DateTime? createdAt;
   final DateTime? startsAt;
   final DateTime? endedAt;
   final DateTime? updatedAt;
+  final DateTime? startedAt;
   final DateTime? liveStartedAt;
   final DateTime? liveEndedAt;
   final DateTime? timerEndsAt;
@@ -152,13 +159,28 @@ class CallState extends Equatable {
     return callParticipants.where((element) => element.isSpeaking).toList();
   }
 
+  bool get createdByMe => createdByUserId == currentUserId;
+
+  String get createdByUserId => createdByUser.id;
+
+  List<CallMemberState> get ringingMembers {
+    return callMembers
+        .where(
+          (member) =>
+              member.callAcceptedAt == null &&
+              member.callRejectedAt == null &&
+              member.userId != currentUserId,
+        )
+        .toList();
+  }
+
   /// Returns a copy of this [CallState] with the given fields replaced
   /// with the new values.
   CallState copyWith({
     CallPreferences? preferences,
     String? currentUserId,
     StreamCallCid? callCid,
-    String? createdByUserId,
+    CallUser? createdByUser,
     bool? isRingingFlow,
     String? sessionId,
     CallStatus? status,
@@ -176,11 +198,13 @@ class CallState extends Equatable {
     RtcMediaDevice? audioOutputDevice,
     List<CallPermission>? ownCapabilities,
     List<CallParticipantState>? callParticipants,
+    List<CallMemberState>? callMembers,
     Map<String, List<String>>? capabilitiesByRole,
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? startsAt,
     DateTime? endedAt,
+    DateTime? startedAt,
     DateTime? liveStartedAt,
     DateTime? liveEndedAt,
     DateTime? timerEndsAt,
@@ -198,7 +222,7 @@ class CallState extends Equatable {
       preferences: preferences ?? this.preferences,
       currentUserId: currentUserId ?? this.currentUserId,
       callCid: callCid ?? this.callCid,
-      createdByUserId: createdByUserId ?? this.createdByUserId,
+      createdByUser: createdByUser ?? this.createdByUser,
       isRingingFlow: isRingingFlow ?? this.isRingingFlow,
       sessionId: sessionId ?? this.sessionId,
       status: status ?? this.status,
@@ -216,11 +240,13 @@ class CallState extends Equatable {
       audioOutputDevice: audioOutputDevice ?? this.audioOutputDevice,
       ownCapabilities: ownCapabilities ?? this.ownCapabilities,
       callParticipants: callParticipants ?? this.callParticipants,
+      callMembers: callMembers ?? this.callMembers,
       capabilitiesByRole: capabilitiesByRole ?? this.capabilitiesByRole,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       startsAt: startsAt ?? this.startsAt,
       endedAt: endedAt ?? this.endedAt,
+      startedAt: startedAt ?? this.startedAt ?? this.liveStartedAt,
       liveStartedAt: liveStartedAt ?? this.liveStartedAt,
       liveEndedAt: liveEndedAt ?? this.liveEndedAt,
       timerEndsAt: timerEndsAt ?? this.timerEndsAt,
@@ -255,7 +281,8 @@ class CallState extends Equatable {
       updatedAt: metadata.details.updatedAt,
       startsAt: metadata.details.startsAt,
       endedAt: metadata.details.endedAt,
-      createdByUserId: metadata.details.createdBy.id,
+      startedAt: metadata.session.startedAt ?? metadata.session.liveStartedAt,
+      createdByUser: metadata.details.createdBy,
       custom: metadata.details.custom,
       egress: metadata.details.egress,
       rtmpIngress: metadata.details.rtmpIngress,
@@ -265,6 +292,7 @@ class CallState extends Equatable {
       liveEndedAt: metadata.session.liveEndedAt,
       timerEndsAt: metadata.session.timerEndsAt,
       capabilitiesByRole: capabilitiesByRole,
+      callMembers: metadata.toCallMembers(),
     );
   }
 
@@ -272,7 +300,7 @@ class CallState extends Equatable {
   List<Object?> get props => [
         currentUserId,
         callCid,
-        createdByUserId,
+        createdByUser,
         sessionId,
         status,
         isRecording,
@@ -294,6 +322,7 @@ class CallState extends Equatable {
         updatedAt,
         startsAt,
         endedAt,
+        startedAt,
         liveStartedAt,
         liveEndedAt,
         timerEndsAt,
@@ -311,7 +340,7 @@ class CallState extends Equatable {
   @override
   String toString() {
     return 'CallState(status: $status, currentUserId: $currentUserId,'
-        ' callCid: $callCid, createdByUserId: $createdByUserId,'
+        ' callCid: $callCid, createdByUser: $createdByUser,'
         ' sessionId: $sessionId, isRecording: $isRecording,'
         ' settings: $settings, egress: $egress, '
         ' videoInputDevice: $videoInputDevice,'

@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'stream_video_flutter'
-  s.version          = '0.9.1'
+  s.version          = '0.9.6'
   s.summary          = 'Official Flutter Plugin for Stream Video.'
   s.description      = <<-DESC
 Official Flutter Plugin for Stream Video..
@@ -16,7 +16,6 @@ Official Flutter Plugin for Stream Video..
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
   s.dependency 'stream_webrtc_flutter'
-  s.dependency 'ios_platform_images'
   s.static_framework = true
   s.platform = :ios, '14.0'
 

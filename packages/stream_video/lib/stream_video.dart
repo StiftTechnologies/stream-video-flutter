@@ -2,7 +2,7 @@ library stream_video;
 
 export 'open_api/video/coordinator/api.dart' hide User;
 export 'src/audio_processing/audio_processor.dart';
-export 'src/call/call.dart';
+export 'src/call/call.dart' hide BaseCallFactory;
 export 'src/call/call_connect_options.dart';
 export 'src/call/call_events.dart';
 export 'src/call/call_reject_reason.dart';
@@ -28,6 +28,7 @@ export 'src/sfu/data/models/sfu_goaway_reason.dart';
 export 'src/sfu/data/models/sfu_track_type.dart';
 export 'src/sorting/call_participant_sorting_presets.dart';
 export 'src/sorting/call_participant_state_sorting.dart';
+export 'src/state_emitter.dart' show MutableStateEmitter, StateEmitter;
 export 'src/stream_video.dart';
 export 'src/token/token.dart';
 export 'src/types/other.dart';

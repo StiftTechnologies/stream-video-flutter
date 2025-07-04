@@ -95,7 +95,9 @@ const ErrorCode$json = {
     {'1': 'ERROR_CODE_PARTICIPANT_MIGRATING', '2': 203},
     {'1': 'ERROR_CODE_PARTICIPANT_RECONNECT_FAILED', '2': 204},
     {'1': 'ERROR_CODE_PARTICIPANT_MEDIA_TRANSPORT_FAILURE', '2': 205},
+    {'1': 'ERROR_CODE_PARTICIPANT_SIGNAL_LOST', '2': 206},
     {'1': 'ERROR_CODE_CALL_NOT_FOUND', '2': 300},
+    {'1': 'ERROR_CODE_CALL_PARTICIPANT_LIMIT_REACHED', '2': 301},
     {'1': 'ERROR_CODE_REQUEST_VALIDATION_FAILED', '2': 400},
     {'1': 'ERROR_CODE_UNAUTHENTICATED', '2': 401},
     {'1': 'ERROR_CODE_PERMISSION_DENIED', '2': 403},
@@ -117,12 +119,13 @@ final $typed_data.Uint8List errorCodeDescriptor = $convert.base64Decode(
     'Q09ERV9QQVJUSUNJUEFOVF9NSUdSQVRJT05fRkFJTEVEEMoBEiUKIEVSUk9SX0NPREVfUEFSVE'
     'lDSVBBTlRfTUlHUkFUSU5HEMsBEiwKJ0VSUk9SX0NPREVfUEFSVElDSVBBTlRfUkVDT05ORUNU'
     'X0ZBSUxFRBDMARIzCi5FUlJPUl9DT0RFX1BBUlRJQ0lQQU5UX01FRElBX1RSQU5TUE9SVF9GQU'
-    'lMVVJFEM0BEh4KGUVSUk9SX0NPREVfQ0FMTF9OT1RfRk9VTkQQrAISKQokRVJST1JfQ09ERV9S'
-    'RVFVRVNUX1ZBTElEQVRJT05fRkFJTEVEEJADEh8KGkVSUk9SX0NPREVfVU5BVVRIRU5USUNBVE'
-    'VEEJEDEiEKHEVSUk9SX0NPREVfUEVSTUlTU0lPTl9ERU5JRUQQkwMSIQocRVJST1JfQ09ERV9U'
-    'T09fTUFOWV9SRVFVRVNUUxCtAxIlCiBFUlJPUl9DT0RFX0lOVEVSTkFMX1NFUlZFUl9FUlJPUh'
-    'D0AxIhChxFUlJPUl9DT0RFX1NGVV9TSFVUVElOR19ET1dOENgEEhgKE0VSUk9SX0NPREVfU0ZV'
-    'X0ZVTEwQvAU=');
+    'lMVVJFEM0BEicKIkVSUk9SX0NPREVfUEFSVElDSVBBTlRfU0lHTkFMX0xPU1QQzgESHgoZRVJS'
+    'T1JfQ09ERV9DQUxMX05PVF9GT1VORBCsAhIuCilFUlJPUl9DT0RFX0NBTExfUEFSVElDSVBBTl'
+    'RfTElNSVRfUkVBQ0hFRBCtAhIpCiRFUlJPUl9DT0RFX1JFUVVFU1RfVkFMSURBVElPTl9GQUlM'
+    'RUQQkAMSHwoaRVJST1JfQ09ERV9VTkFVVEhFTlRJQ0FURUQQkQMSIQocRVJST1JfQ09ERV9QRV'
+    'JNSVNTSU9OX0RFTklFRBCTAxIhChxFUlJPUl9DT0RFX1RPT19NQU5ZX1JFUVVFU1RTEK0DEiUK'
+    'IEVSUk9SX0NPREVfSU5URVJOQUxfU0VSVkVSX0VSUk9SEPQDEiEKHEVSUk9SX0NPREVfU0ZVX1'
+    'NIVVRUSU5HX0RPV04Q2AQSGAoTRVJST1JfQ09ERV9TRlVfRlVMTBC8BQ==');
 
 @$core.Deprecated('Use sdkTypeDescriptor instead')
 const SdkType$json = {
@@ -557,6 +560,7 @@ const PublishOption$json = {
       '10': 'videoDimension'
     },
     {'1': 'id', '3': 8, '4': 1, '5': 5, '10': 'id'},
+    {'1': 'use_single_layer', '3': 9, '4': 1, '5': 8, '10': 'useSingleLayer'},
   ],
 };
 
@@ -568,7 +572,8 @@ final $typed_data.Uint8List publishOptionDescriptor = $convert.base64Decode(
     'ZwcxgEIAEoBVIDZnBzEiwKEm1heF9zcGF0aWFsX2xheWVycxgFIAEoBVIQbWF4U3BhdGlhbExh'
     'eWVycxIuChNtYXhfdGVtcG9yYWxfbGF5ZXJzGAYgASgFUhFtYXhUZW1wb3JhbExheWVycxJQCg'
     '92aWRlb19kaW1lbnNpb24YByABKAsyJy5zdHJlYW0udmlkZW8uc2Z1Lm1vZGVscy5WaWRlb0Rp'
-    'bWVuc2lvblIOdmlkZW9EaW1lbnNpb24SDgoCaWQYCCABKAVSAmlk');
+    'bWVuc2lvblIOdmlkZW9EaW1lbnNpb24SDgoCaWQYCCABKAVSAmlkEigKEHVzZV9zaW5nbGVfbG'
+    'F5ZXIYCSABKAhSDnVzZVNpbmdsZUxheWVy');
 
 @$core.Deprecated('Use codecDescriptor instead')
 const Codec$json = {
@@ -971,3 +976,46 @@ final $typed_data.Uint8List appleStateDescriptor = $convert.base64Decode(
     'CgpBcHBsZVN0YXRlEk8KDXRoZXJtYWxfc3RhdGUYASABKA4yKi5zdHJlYW0udmlkZW8uc2Z1Lm'
     '1vZGVscy5BcHBsZVRoZXJtYWxTdGF0ZVIMdGhlcm1hbFN0YXRlEjgKGWlzX2xvd19wb3dlcl9t'
     'b2RlX2VuYWJsZWQYAiABKAhSFWlzTG93UG93ZXJNb2RlRW5hYmxlZA==');
+
+@$core.Deprecated('Use performanceStatsDescriptor instead')
+const PerformanceStats$json = {
+  '1': 'PerformanceStats',
+  '2': [
+    {
+      '1': 'track_type',
+      '3': 1,
+      '4': 1,
+      '5': 14,
+      '6': '.stream.video.sfu.models.TrackType',
+      '10': 'trackType'
+    },
+    {
+      '1': 'codec',
+      '3': 2,
+      '4': 1,
+      '5': 11,
+      '6': '.stream.video.sfu.models.Codec',
+      '10': 'codec'
+    },
+    {'1': 'avg_frame_time_ms', '3': 3, '4': 1, '5': 2, '10': 'avgFrameTimeMs'},
+    {'1': 'avg_fps', '3': 4, '4': 1, '5': 2, '10': 'avgFps'},
+    {
+      '1': 'video_dimension',
+      '3': 5,
+      '4': 1,
+      '5': 11,
+      '6': '.stream.video.sfu.models.VideoDimension',
+      '10': 'videoDimension'
+    },
+    {'1': 'target_bitrate', '3': 6, '4': 1, '5': 5, '10': 'targetBitrate'},
+  ],
+};
+
+/// Descriptor for `PerformanceStats`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List performanceStatsDescriptor = $convert.base64Decode(
+    'ChBQZXJmb3JtYW5jZVN0YXRzEkEKCnRyYWNrX3R5cGUYASABKA4yIi5zdHJlYW0udmlkZW8uc2'
+    'Z1Lm1vZGVscy5UcmFja1R5cGVSCXRyYWNrVHlwZRI0CgVjb2RlYxgCIAEoCzIeLnN0cmVhbS52'
+    'aWRlby5zZnUubW9kZWxzLkNvZGVjUgVjb2RlYxIpChFhdmdfZnJhbWVfdGltZV9tcxgDIAEoAl'
+    'IOYXZnRnJhbWVUaW1lTXMSFwoHYXZnX2ZwcxgEIAEoAlIGYXZnRnBzElAKD3ZpZGVvX2RpbWVu'
+    'c2lvbhgFIAEoCzInLnN0cmVhbS52aWRlby5zZnUubW9kZWxzLlZpZGVvRGltZW5zaW9uUg52aW'
+    'Rlb0RpbWVuc2lvbhIlCg50YXJnZXRfYml0cmF0ZRgGIAEoBVINdGFyZ2V0Qml0cmF0ZQ==');

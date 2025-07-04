@@ -1,3 +1,7 @@
+// ignore_for_file: deprecated_member_use_from_same_package
+
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 
@@ -39,7 +43,7 @@ class StreamCallParticipants extends StatefulWidget {
   StreamCallParticipants({
     super.key,
     required this.call,
-    required this.participants,
+    this.participants,
     this.filter = _defaultFilter,
     Sort<CallParticipantState>? sort,
     this.enableLocalVideo,
@@ -54,7 +58,8 @@ class StreamCallParticipants extends StatefulWidget {
   final Call call;
 
   /// The list of participants to display.
-  final Iterable<CallParticipantState> participants;
+  /// If provided these [participants] will be used, otherwise the participants of the [call] will be used.
+  final List<CallParticipantState>? participants;
 
   /// Used for filtering the call participants.
   final Filter<CallParticipantState> filter;
@@ -105,26 +110,62 @@ class _StreamCallParticipantsState extends State<StreamCallParticipants> {
   List<CallParticipantState> _participants = [];
   CallParticipantState? _screenShareParticipant;
 
+  List<String> _sortedParticipantKeys = [];
+
+  StreamSubscription<List<CallParticipantState>?>? _participantsSubscription;
+
   @override
   void initState() {
-    _recalculateParticipants();
     super.initState();
+    _recalculateParticipants(
+      widget.participants ?? widget.call.state.value.callParticipants,
+    );
+    if (widget.participants == null) {
+      _participantsSubscription = widget.call
+          .partialState((state) => state.callParticipants)
+          .listen(_recalculateParticipants);
+    }
   }
 
   @override
   void didUpdateWidget(covariant StreamCallParticipants oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (!const ListEquality<CallParticipantState>().equals(
-      widget.participants.toList(),
-      oldWidget.participants.toList(),
-    )) {
-      _recalculateParticipants();
+    if (widget.participants != null) {
+      _participantsSubscription?.cancel();
+
+      if (!const ListEquality<CallParticipantState>().equals(
+        widget.participants!.toList(),
+        oldWidget.participants?.toList(),
+      )) {
+        _recalculateParticipants(widget.participants!);
+      }
+    } else if (widget.call != oldWidget.call) {
+      _participantsSubscription?.cancel();
+      _participantsSubscription = widget.call
+          .partialState((state) => state.callParticipants)
+          .listen(_recalculateParticipants);
     }
   }
 
-  void _recalculateParticipants() {
-    final participants = [...widget.participants].where(widget.filter).toList();
+  void _recalculateParticipants(List<CallParticipantState> newParticipants) {
+    final participants = [...newParticipants].where(widget.filter).toList();
+
+    for (final participant in participants) {
+      final index =
+          _sortedParticipantKeys.indexOf(participant.uniqueParticipantKey);
+      if (index == -1) {
+        _sortedParticipantKeys.add(participant.uniqueParticipantKey);
+      }
+    }
+
+    // First apply previous sorting on new participants list
+    participants.sort(
+      (a, b) => _sortedParticipantKeys
+          .indexOf(a.uniqueParticipantKey)
+          .compareTo(_sortedParticipantKeys.indexOf(b.uniqueParticipantKey)),
+    );
+
     mergeSort(participants, compare: widget.sort);
 
     final screenShareParticipant = participants.firstWhereOrNull(
@@ -137,6 +178,9 @@ class _StreamCallParticipantsState extends State<StreamCallParticipants> {
         return true;
       },
     );
+
+    _sortedParticipantKeys =
+        participants.map((e) => e.uniqueParticipantKey).toList();
 
     if (mounted) {
       setState(() {

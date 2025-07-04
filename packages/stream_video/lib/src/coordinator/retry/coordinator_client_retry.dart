@@ -577,11 +577,15 @@ class CoordinatorClientRetry extends CoordinatorClient {
   @override
   Future<Result<None>> startTranscription(
     StreamCallCid callCid, {
+    bool? enableClosedCaptions,
+    TranscriptionSettingsLanguage? language,
     String? transcriptionExternalStorage,
   }) {
     return _retryManager.execute(
       () => _delegate.startTranscription(
         callCid,
+        enableClosedCaptions: enableClosedCaptions,
+        language: language,
         transcriptionExternalStorage: transcriptionExternalStorage,
       ),
       (error, nextAttemptDelay) async {
@@ -613,9 +617,19 @@ class CoordinatorClientRetry extends CoordinatorClient {
   }
 
   @override
-  Future<Result<None>> startClosedCaptions(StreamCallCid callCid) {
+  Future<Result<None>> startClosedCaptions(
+    StreamCallCid callCid, {
+    bool? enableTranscription,
+    TranscriptionSettingsLanguage? language,
+    String? transcriptionExternalStorage,
+  }) {
     return _retryManager.execute(
-      () => _delegate.startClosedCaptions(callCid),
+      () => _delegate.startClosedCaptions(
+        callCid,
+        enableTranscription: enableTranscription,
+        language: language,
+        transcriptionExternalStorage: transcriptionExternalStorage,
+      ),
       (error, nextAttemptDelay) async {
         _logRetry('startClosedCaptions', error, nextAttemptDelay);
       },
@@ -652,6 +666,7 @@ class CoordinatorClientRetry extends CoordinatorClient {
   Future<Result<CallMetadata>> updateCall({
     required StreamCallCid callCid,
     Map<String, Object> custom = const {},
+    DateTime? startsAt,
     StreamRingSettings? ring,
     StreamAudioSettings? audio,
     StreamVideoSettings? video,
@@ -669,6 +684,7 @@ class CoordinatorClientRetry extends CoordinatorClient {
       () => _delegate.updateCall(
         callCid: callCid,
         custom: custom,
+        startsAt: startsAt,
         ring: ring,
         audio: audio,
         video: video,

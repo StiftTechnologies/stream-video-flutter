@@ -18,6 +18,7 @@ class StreamVideoRenderer extends StatefulWidget {
     this.placeholderBuilder = _defaultPlaceholderBuilder,
     this.videoFit = VideoFit.cover,
     this.onSizeChanged,
+    this.persistTrackIfNotVisible = false,
   });
 
   /// Represents a call.
@@ -37,6 +38,11 @@ class StreamVideoRenderer extends StatefulWidget {
 
   /// Called when the size of the widget changes.
   final ValueSetter<Size>? onSizeChanged;
+
+  /// If the track should be persisted when not visible. Otherwise it will be unnsubscribed.
+  /// This is useful for screen sharing, where the track should be persisted even when not visible.
+  /// Defaults to false.
+  final bool persistTrackIfNotVisible;
 
   @override
   State<StreamVideoRenderer> createState() => _StreamVideoRendererState();
@@ -118,7 +124,8 @@ class _StreamVideoRendererState extends State<StreamVideoRenderer> {
       return widget.placeholderBuilder.call(context);
     }
 
-    var mirror = widget.participant.isLocal;
+    var mirror = (trackState is RemoteTrackState && trackState.mirrorVideo) ||
+        widget.participant.isLocal;
 
     if (videoTrack is RtcLocalScreenShareTrack) {
       mirror = false;
@@ -162,6 +169,14 @@ class _StreamVideoRendererState extends State<StreamVideoRenderer> {
     if (visibility != ViewportVisibility.visible) {
       // If the visibility is not visible, set the size to zero.
       size = Size.zero;
+    } else {
+      // VisibilityDetector measures the size in logical, device-independent pixels.
+      // We need to convert it to device pixels to get the correct size for the video track.
+      final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+      size = Size(
+        size.width * devicePixelRatio,
+        size.height * devicePixelRatio,
+      );
     }
 
     return _onSizeChanged(size, participantId);
@@ -187,7 +202,7 @@ class _StreamVideoRendererState extends State<StreamVideoRenderer> {
     // If the dimension hasn't changed, don't update the subscription.
     if (prevDim == newDim) return;
 
-    if (newDim.isEmpty) {
+    if (newDim.isEmpty && !widget.persistTrackIfNotVisible) {
       // Remove the video subscription of the track.
       widget.call.removeSubscription(
         userId: widget.participant.userId,

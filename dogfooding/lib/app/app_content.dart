@@ -14,6 +14,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart';
 import 'package:stream_video_flutter/stream_video_flutter_l10n.dart';
 
+import '../core/model/environment.dart';
 import '../core/repos/app_preferences.dart';
 import '../di/injector.dart';
 import '../firebase_options.dart';
@@ -85,6 +86,7 @@ class _StreamDogFoodingAppContentState
   late final _router = initRouter(_userAuthController);
 
   final _compositeSubscription = CompositeSubscription();
+  bool? _microphoneEnabledBeforeInterruption;
 
   @override
   void initState() {
@@ -104,6 +106,7 @@ class _StreamDogFoodingAppContentState
     });
 
     _tryConsumingIncomingCallFromTerminatedState();
+    _handleMobileAudioInterruptions();
   }
 
   void initPushNotificationManagerIfAvailable() {
@@ -111,12 +114,32 @@ class _StreamDogFoodingAppContentState
     // i.e. the user is not logged in.
     if (!locator.isRegistered<StreamVideo>()) return;
 
+    // Observe call kit events.
+    _observeCallKitEvents();
     // Observes deep links.
     _observeDeepLinks();
     // Observe FCM messages.
     _observeFcmMessages();
-    // Observe call kit events.
-    _observeCallKitEvents();
+  }
+
+  void _handleMobileAudioInterruptions() {
+    if (!CurrentPlatform.isMobile) return;
+
+    RtcMediaDeviceNotifier.instance.handleCallInterruptionCallbacks(
+      onInterruptionStart: () {
+        final call = StreamVideo.instance.activeCall;
+        _microphoneEnabledBeforeInterruption =
+            call?.state.value.localParticipant?.isAudioEnabled;
+
+        call?.setMicrophoneEnabled(enabled: false);
+      },
+      onInterruptionEnd: () {
+        if (_microphoneEnabledBeforeInterruption == true) {
+          StreamVideo.instance.activeCall?.setMicrophoneEnabled(enabled: true);
+        }
+        _microphoneEnabledBeforeInterruption = null;
+      },
+    );
   }
 
   void _tryConsumingIncomingCallFromTerminatedState() {

@@ -1,3 +1,85 @@
+## Unreleased
+
+🚧 (Android) Picture-in-Picture (PiP) Improvements - Breaking Change
+* **Simplified Setup:** Introduced `StreamFlutterActivity` - extend it instead of `FlutterActivity` for automatic PiP support.
+* **Automatic Activation:** PiP now triggers automatically when users press home button or background the app during calls.
+* **Fixed Overlay Issues:** PiP view can no longer be overlapped by other widgets and will always display the correct video layout.
+* **Migration Required:** In your `MainActivity`, remove the manual `onUserLeaveHint()` implementation and extend the MainActivity with `StreamFlutterActivity`. Previously required manually calling `PictureInPictureHelper.enterPictureInPictureIfInCall(this)` - now handled automatically.
+* **Removed Deprecated Methods:** Removed the deprecated `setPictureInPictureEnabled` method from `StreamVideoFlutterPlatform`, `StreamVideoFlutterBackground`, and `MethodChannelStreamVideoFlutter` classes, and the deprecated `enterPictureInPictureIfInCall` method from `PictureInPictureHelper` (Android). PiP is now handled automatically by `StreamPictureInPictureAndroidView`.
+
+🔄 Partial State Updates:
+* Added `call.partialState` for more specific and efficient state updates.
+* Added callbacks in `StreamCallContainer`, `StreamCallContent`, `StreamIncomingCallContent`, and others that no longer return a state.
+By (only) using these callbacks the root widgets will use more efficient partial state updates.
+* Added `PartialCallStateBuilder` to help with making widgets that depend on `partialState`.
+* Deprecated old callbacks
+
+✅ Added
+* Added `setMirrorVideo` method to `Call` class to control video mirroring for participants.
+
+🐞 Fixed
+* Improved SFU error handling in Call flow and disconnect reason handling. The disconnected call state now accurately reflects the original cause of disconnection.
+
+## 0.9.6
+
+✅ Added
+* Added `handleCallInterruptionCallbacks` method to `RtcMediaDeviceNotifier` that provides an option to handle system audio interruption like incoming calls, or other media playing. See the [documentation](https://getstream.io/video/docs/flutter/advanced/handling-system-audio-interruptions/) for details.
+* Improved the Picture-in-Picture (PiP) implementation for video calls
+    * (iOS) Shows participant avatar instead of black screen when video track is disabled.
+    * (iOS) Added overlay with participant name, microphone indicator and connection qualit indicator.
+    * (iOS/Android) Added `sort` in `PictureInPictureConfiguration` that enables customization of PiP participant selection.
+
+🐞 Fixed
+* Fixed the handling of user blocking event to disconnect the blocked user with a proper reason.
+
+## 0.9.5
+
+✅ Added
+* Introduced `extendBody` parameter in `StreamCallContent` that extends the participants view to the bottom edge of the scaffold when enabled.
+* Introduced `allowMultipleActiveCalls` option in `StreamVideoOptions` enabling support for concurrent active calls. See the [documentation](https://getstream.io/video/docs/flutter/advanced/multiple-simultaneous-calls-support/) for details.
+
+🐞 Fixed
+* Enhanced permission update handling to only process events targeting the current user.
+* Improved audio output device selection to prioritize external audio devices during call connection.
+
+## 0.9.4
+
+🐞 Fixed
+* Resolved an issue where the screen share track would disappear when zoomed in.
+* Fixed screen sharing layout issues on wide screens.
+* Fixed `ScreenShareCallParticipantsContent` with Spotlight view on very wide windows.
+
+✅ Added
+* Introduced new builder parameters to `LivestreamPlayer` for enhanced customization:
+    - `videoRendererBuilder`: Build a custom video renderer.
+    - `videoPlaceholderBuilder`: Build a placeholder for the video renderer.
+    - `livestreamHostsUnavailableBuilder`: Customize the UI when a livestream is connected but no hosts have video enabled.
+    - `livestreamNotConnectedBuilder`: Customize the UI when the livestream is not connected.
+
+## 0.9.3
+
+✅ Added
+* Introduced `callDurationStream` to the `Call` class. A `Stream<Duration>` that emits the current call duration.
+* Added `createdByUser` property to the `CallState` for better tracking of the initiating user.
+* Added `livestreamControlsBuilder` parameter to `LivestreamPlayer` allowing customisation of controls panel.
+
+🐞 Fixed
+* Resolved an issue where participants’ tracks would briefly disappear ("blink") or change location when many participants are in the call.
+* Fixed a bug where subsequent screen sharing sessions did not end properly when terminated via the browser UI.
+
+## 0.9.2
+
+🐞 Fixed
+* Fixed issue with the user feedback collection endpoint.
+
+✅ Added
+* Added `ring`, `audio`, `video`, `screenshare`, `session` and `frameRecordings` settings to `Call.getOrCreate()` method.
+* Added `members` list parameter to `Call.getOrCreate()` method to allow assigning roles when creating a call.
+* Added `session` and `frameRecordings` settings to `Call.update()` method.
+
+🔄 Updated
+* Updated `LivestreamPlayer` widget with a refreshed look and feel. Added `livestreamEndedBuilder` and `livestreamBackstageBuilder` for enhanced configuration options.
+
 ## 0.9.1
 
 ✅ Added

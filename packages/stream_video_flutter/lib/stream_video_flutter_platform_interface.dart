@@ -48,19 +48,17 @@ abstract class StreamVideoFlutterPlatform extends PlatformInterface {
   }
 
   Future<bool> stopBackgroundService(
-    ServiceType type,
-  ) {
+    ServiceType type, {
+    String? callCid,
+  }) {
     throw UnimplementedError('stopService() has not been implemented.');
   }
 
   Future<bool> isBackgroundServiceRunning(
-    ServiceType type,
-  ) {
+    ServiceType type, {
+    String? callCid,
+  }) {
     throw UnimplementedError('isRunningService has not been implemented.');
-  }
-
-  Future<void> setPictureInPictureEnabled({required bool enable}) {
-    throw UnimplementedError('showPictureInPicture has not been implemented.');
   }
 
   Future<bool?> isBackgroundEffectSupported() {

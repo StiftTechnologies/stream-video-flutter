@@ -557,7 +557,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
           members: result.members.toCallMembers(),
           users: result.members.toCallUsers(),
           duration: result.duration,
-          reportingIntervalMs: result.statsOptions.reportingIntervalMs,
+          statsOptions: result.statsOptions,
           ownCapabilities: result.ownCapabilities
               .map(
                 (it) => CallPermission.fromAlias(it.value),
@@ -844,7 +844,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   Future<Result<None>> startTranscription(
     StreamCallCid callCid, {
     bool? enableClosedCaptions,
-    String? language,
+    TranscriptionSettingsLanguage? language,
     String? transcriptionExternalStorage,
   }) async {
     try {
@@ -859,7 +859,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
         open.StartTranscriptionRequest(
           transcriptionExternalStorage: transcriptionExternalStorage,
           enableClosedCaptions: enableClosedCaptions,
-          language: language,
+          language: language?.toStartTranscriptionDto(),
         ),
       );
       return const Result.success(none);
@@ -916,7 +916,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   Future<Result<None>> startClosedCaptions(
     StreamCallCid callCid, {
     bool? enableTranscription,
-    String? language,
+    TranscriptionSettingsLanguage? language,
     String? transcriptionExternalStorage,
   }) async {
     try {
@@ -931,7 +931,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
         open.StartClosedCaptionsRequest(
           enableTranscription: enableTranscription,
           externalStorage: transcriptionExternalStorage,
-          language: language,
+          language: language?.toStartClosedCaptionsDto(),
         ),
       );
       if (result == null) {
@@ -1286,6 +1286,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   Future<Result<CallMetadata>> updateCall({
     required StreamCallCid callCid,
     Map<String, Object> custom = const {},
+    DateTime? startsAt,
     StreamRingSettings? ring,
     StreamAudioSettings? audio,
     StreamVideoSettings? video,
@@ -1309,6 +1310,8 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
         callCid.type.value,
         callCid.id,
         open.UpdateCallRequest(
+          startsAt: startsAt,
+          custom: custom,
           settingsOverride: open.CallSettingsRequest(
             ring: ring?.toOpenDto(),
             audio: audio?.toOpenDto(),
@@ -1323,7 +1326,6 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
             session: session?.toOpenDto(),
             frameRecording: frameRecording?.toOpenDto(),
           ),
-          custom: custom,
         ),
       );
       if (result == null) {

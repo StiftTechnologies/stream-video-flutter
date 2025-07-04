@@ -1,10 +1,51 @@
 ## Unreleased
 
+✅ Added
+* Added `setMirrorVideo` method to `Call` class to control video mirroring for participants.
+* Added `call.partialState` for more specific and efficient state updates.
+
 🐞 Fixed
-* Fixed user feedback collection endpoint
+* Improved SFU error handling in Call flow and disconnect reason handling. The disconnected call state now accurately reflects the original cause of disconnection.
+
+## 0.9.6
+
+✅ Added
+* Added `handleCallInterruptionCallbacks` method to `RtcMediaDeviceNotifier` that provides an option to handle system audio interruption like incoming calls, or other media playing. See the [documentation](https://getstream.io/video/docs/flutter/advanced/handling-system-audio-interruptions/) for details.
+
+🐞 Fixed
+* Fixed the handling of user blocking event to disconnect the blocked user with a proper reason.
+
+## 0.9.5
+
+✅ Added
+* Introduced `allowMultipleActiveCalls` option in `StreamVideoOptions` enabling support for concurrent active calls. See the [documentation](https://getstream.io/video/docs/flutter/advanced/multiple-simultaneous-calls-support/) for details.
+
+🐞 Fixed
+* Enhanced permission update handling to only process events targeting the current user.
+* Improved audio output device selection to prioritize external audio devices during call connection.
+
+## 0.9.4
+
+* Sync version with `stream_video_flutter` 0.9.4
+
+## 0.9.3
+
+✅ Added
+* Introduced `callDurationStream` to the `Call` class. A `Stream<Duration>` that emits the current call duration.
+* Added `createdByUser` property to the `CallState` for better tracking of the initiating user.
+
+🐞 Fixed
+* Resolved an issue where participants’ tracks would briefly disappear ("blink") or change location when many participants are in the call.
+* Fixed a bug where subsequent screen sharing sessions did not end properly when terminated via the browser UI.
+
+## 0.9.2
+
+🐞 Fixed
+* Fixed issue with the user feedback collection endpoint.
 
 ✅ Added
 * Added `ring`, `audio`, `video`, `screenshare`, `session` and `frameRecordings` settings to `Call.getOrCreate()` method.
+* Added `members` list parameter to `Call.getOrCreate()` method to allow assigning roles when creating a call.
 * Added `session` and `frameRecordings` settings to `Call.update()` method.
 
 ## 0.9.1

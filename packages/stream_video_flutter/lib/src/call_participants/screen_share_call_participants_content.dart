@@ -46,11 +46,19 @@ class ScreenShareCallParticipantsContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const aspectRatio = 16 / 9;
+
+    final windowSize = MediaQuery.sizeOf(context);
+    final isWideWindow = windowSize.width / windowSize.height > aspectRatio;
+
     return CallParticipantsSpotlightView(
       call: call,
       spotlight: screenSharingParticipant,
       participants: participants,
       participantBuilder: screenShareParticipantBuilder,
+      barAlignment: isWideWindow
+          ? ParticipantsBarAlignment.right
+          : ParticipantsBarAlignment.bottom,
       spotlightBuilder: (context, call, participant) {
         final screenShareContentBuilder = this.screenShareContentBuilder;
         if (screenShareContentBuilder != null) {
@@ -104,7 +112,7 @@ class ScreenShareCallParticipantsContent extends StatelessWidget {
 }
 
 /// A widget that renders a screen sharing track in the screen.
-class ScreenShareContent extends StatelessWidget {
+class ScreenShareContent extends StatefulWidget {
   /// Creates a new instance of [ScreenShareContent].
   const ScreenShareContent({
     super.key,
@@ -127,14 +135,21 @@ class ScreenShareContent extends StatelessWidget {
   final BorderRadius borderRadius;
 
   @override
+  State<ScreenShareContent> createState() => _ScreenShareContentState();
+}
+
+class _ScreenShareContentState extends State<ScreenShareContent> {
+  bool _isZoomed = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = StreamVideoTheme.of(context);
-    final screenShareTrack = participant.screenShareTrack;
+    final screenShareTrack = widget.participant.screenShareTrack;
 
     return ClipRRect(
-      borderRadius: borderRadius,
+      borderRadius: widget.borderRadius,
       child: ColoredBox(
-        color: backgroundColor,
+        color: widget.backgroundColor,
         child: Builder(
           builder: (context) {
             if (screenShareTrack == null) {
@@ -146,11 +161,21 @@ class ScreenShareContent extends StatelessWidget {
             }
 
             return InteractiveViewer(
+              maxScale: 4,
+              onInteractionUpdate: (details) {
+                final isZoomed = details.scale > 1.0;
+                if (_isZoomed != isZoomed) {
+                  setState(() {
+                    _isZoomed = isZoomed;
+                  });
+                }
+              },
               child: StreamVideoRenderer(
-                call: call,
-                participant: participant,
+                call: widget.call,
+                participant: widget.participant,
                 videoFit: VideoFit.contain,
                 videoTrackType: SfuTrackType.screenShare,
+                persistTrackIfNotVisible: _isZoomed,
               ),
             );
           },

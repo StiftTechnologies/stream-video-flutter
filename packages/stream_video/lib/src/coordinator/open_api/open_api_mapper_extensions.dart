@@ -8,7 +8,6 @@ import '../models/coordinator_events.dart';
 import 'event/event_type.dart';
 import 'event/open_api_event.dart';
 import 'open_api_extensions.dart';
-import '../../../../open_api/video/coordinator/api.dart' as open;
 
 extension WebsocketEventMapperExt on OpenApiEvent {
   /// Returns [CoordinatorEvent].
@@ -92,6 +91,9 @@ extension WebsocketEventMapperExt on OpenApiEvent {
           callCid: StreamCallCid(cid: event.callCid),
           endedBy: endedBy,
           createdAt: event.createdAt,
+          metadata: event.call.toCallMetadata(),
+          type: event.type,
+          reason: event.reason,
         );
       case EventType.callSessionStarted:
         final event = callSessionStarted!;
@@ -286,6 +288,7 @@ extension WebsocketEventMapperExt on OpenApiEvent {
         return CoordinatorCallTranscriptionFailedEvent(
           callCid: StreamCallCid(cid: event.callCid),
           createdAt: event.createdAt,
+          error: event.error,
         );
       case EventType.callClosedCaptionStarted:
         final event = callClosedCaptionsStarted!;
@@ -396,6 +399,5 @@ extension WebsocketEventMapperExt on OpenApiEvent {
       case EventType.unknown:
         return const CoordinatorUnknownEvent();
     }
-    return const CoordinatorUnsupportedEvent();
   }
 }

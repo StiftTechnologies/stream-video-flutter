@@ -7,10 +7,6 @@ env:
 
 on:
   pull_request:
-    paths:
-      - "packages/**"
-      - "dogfooding/**"
-      - ".github/workflows/stream_video_flutter_workflow.yml"
     types:
       - opened
       - reopened
@@ -44,6 +40,7 @@ jobs:
       - name: Install Tools
         run: |
           flutter pub global activate melos
+          flutter pub global activate remove_from_coverage
 
       - name: Bootstrap Workspace
         run: melos postclean
@@ -64,6 +61,19 @@ jobs:
       - name: Check formatting
         run: |
           melos run format:verify
+
+      ## Test and coverage reporting
+      - name: "Flutter Test"
+        run: melos run test:all
+      - name: "Collect Coverage"
+        run: melos run coverage:ignore-file --no-select
+      - name: "Upload Coverage"
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: packages/*/coverage/lcov.info
+      - name: "Test dart fixes"
+        run: melos run test:fixes
 
   build:
     timeout-minutes: 30

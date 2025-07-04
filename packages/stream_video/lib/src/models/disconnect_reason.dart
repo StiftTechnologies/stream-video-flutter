@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../call/call_reject_reason.dart';
 import '../errors/video_error.dart';
+import '../sfu/data/models/sfu_error.dart';
 
 @immutable
 abstract class DisconnectReason extends Equatable {
@@ -14,10 +15,16 @@ abstract class DisconnectReason extends Equatable {
     VideoError error,
   ) = DisconnectReasonFailure;
 
+  const factory DisconnectReason.sfuError(
+    SfuError error,
+  ) = DisconnectReasonSfuError;
+
   const factory DisconnectReason.rejected({
     required String byUserId,
     CallRejectReason? reason,
   }) = DisconnectReasonRejected;
+
+  const factory DisconnectReason.blocked() = DisconnectReasonBlocked;
 
   const factory DisconnectReason.cancelled({
     required String byUserId,
@@ -25,6 +32,10 @@ abstract class DisconnectReason extends Equatable {
 
   factory DisconnectReason.ended() {
     return DisconnectReasonEnded();
+  }
+
+  factory DisconnectReason.replaced() {
+    return DisconnectReasonReplaced();
   }
 
   factory DisconnectReason.lastParticipantLeft() {
@@ -62,6 +73,20 @@ class DisconnectReasonFailure extends DisconnectReason {
   }
 }
 
+class DisconnectReasonSfuError extends DisconnectReason {
+  const DisconnectReasonSfuError(this.error);
+
+  final SfuError error;
+
+  @override
+  List<Object?> get props => [error];
+
+  @override
+  String toString() {
+    return 'SfuError{error: $error}';
+  }
+}
+
 class DisconnectReasonRejected extends DisconnectReason {
   const DisconnectReasonRejected({
     required this.byUserId,
@@ -77,6 +102,15 @@ class DisconnectReasonRejected extends DisconnectReason {
   @override
   String toString() {
     return 'Rejected{byUserId: $byUserId}';
+  }
+}
+
+class DisconnectReasonBlocked extends DisconnectReason {
+  const DisconnectReasonBlocked();
+
+  @override
+  String toString() {
+    return 'Blocked';
   }
 }
 
@@ -109,6 +143,22 @@ class DisconnectReasonEnded extends DisconnectReason {
   @override
   String toString() {
     return 'Ended';
+  }
+}
+
+class DisconnectReasonReplaced extends DisconnectReason {
+  factory DisconnectReasonReplaced() {
+    return _instance;
+  }
+
+  const DisconnectReasonReplaced._internal();
+
+  static const DisconnectReasonReplaced _instance =
+      DisconnectReasonReplaced._internal();
+
+  @override
+  String toString() {
+    return 'Replaced';
   }
 }
 

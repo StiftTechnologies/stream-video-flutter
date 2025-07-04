@@ -368,6 +368,11 @@ extension RtcLocalScreenShareTrackExt on RtcLocalScreenShareTrack {
       return true;
     }
 
+    // On web we always get a new media track and deviceId is `null`.
+    if (CurrentPlatform.isWeb) {
+      return false;
+    }
+
     return mediaConstraints.useiOSBroadcastExtension ==
             constraints.useiOSBroadcastExtension &&
         mediaConstraints.deviceId == constraints.deviceId;

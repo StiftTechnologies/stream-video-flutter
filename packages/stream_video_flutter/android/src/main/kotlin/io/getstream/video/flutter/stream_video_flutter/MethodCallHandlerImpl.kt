@@ -24,7 +24,6 @@ import io.getstream.video.flutter.stream_video_flutter.service.ServiceType
 import io.getstream.video.flutter.stream_video_flutter.service.StreamCallService
 import io.getstream.video.flutter.stream_video_flutter.service.StreamScreenShareService
 import io.getstream.video.flutter.stream_video_flutter.service.notification.NotificationPayload
-import io.getstream.video.flutter.stream_video_flutter.service.utils.putBoolean
 import io.getstream.webrtc.flutter.videoEffects.ProcessorProvider
 import io.getstream.video.flutter.stream_video_flutter.videoFilters.factories.BackgroundBlurFactory
 import io.getstream.video.flutter.stream_video_flutter.videoFilters.factories.BlurIntensity
@@ -105,92 +104,115 @@ class MethodCallHandlerImpl(
 
                 result.success(null)
             }
-            "enablePictureInPictureMode" -> {
-                val activity = getActivity()
-                putBoolean(activity, PictureInPictureHelper.PIP_ENABLED_PREF_KEY, true)
-            }
-            "disablePictureInPictureMode" -> {
-                val activity = getActivity()
-                putBoolean(activity, PictureInPictureHelper.PIP_ENABLED_PREF_KEY, false)
-                PictureInPictureHelper.disablePictureInPicture(activity!!)
-            }
+
             "isBackgroundServiceRunning" -> {
-                val statusString = call.argument<String>("type")
-                val serviceType = ServiceType.valueOf(statusString ?: "call")
+                val typeString = call.argument<String>("type")
+                val serviceType = ServiceType.valueOf(typeString ?: "call")
+                val callCid = call.argument<String>("callCid")
 
-                val isRunning = when(serviceType){
-                    ServiceType.call -> StreamCallService.isRunning
-                    ServiceType.screenSharing -> StreamScreenShareService.isRunning
+                try {
+                    val isRunning = serviceManager.isRunning(callCid, serviceType)
+
+                    logger.d { "[onMethodCall] #isServiceRunning(cid: $callCid, type: $serviceType); isRunning: $isRunning" }
+                    result.success(isRunning)
+                } catch (e: IllegalStateException) {
+                    logger.e(e) { "[onMethodCall] #isServiceRunning(cid: $callCid, type: $serviceType); failed: $e" }
+                    result.error("isBackgroundServiceRunning", e.message, null)
+                } catch (e: Exception) {
+                    logger.e(e) { "[onMethodCall] #isServiceRunning(cid: $callCid, type: $serviceType); unexpected error: $e" }
+                    result.error("isBackgroundServiceRunning", e.toString(), null)
                 }
-
-                logger.d { "[onMethodCall] #isServiceRunning($serviceType); isRunning: $isRunning" }
-                result.success(isRunning)
             }
 
             "startBackgroundService" -> {
-                val statusString = call.argument<String>("type")
-                val serviceType = ServiceType.valueOf(statusString ?: "call")
-
+                val typeString = call.argument<String>("type")
+                val serviceType = ServiceType.valueOf(typeString ?: "call")
+                
                 val activity = getActivity()
                 if (activity == null) {
-                    logger.e { "[onMethodCall] #startService($serviceType); failed (No activity found)" }
+                    logger.e { "[onMethodCall] #startService(type: $serviceType); failed (No activity found)" }
                     result.error("startService", "No activity found", null)
                     return
                 }
                 val engine = activity.engine
                 if (engine == null) {
-                    logger.e { "[onMethodCall] #startService($serviceType); failed (No engine found)" }
+                    logger.e { "[onMethodCall] #startService(type: $serviceType); failed (No engine found)" }
                     result.error("startService", "Host activity has no FlutterEngine", activity::class.qualifiedName)
                     return
                 }
+                
                 try {
                     activity.requestPermission {
                         val error = it.exceptionOrNull()
                         if (error != null) {
-                            logger.e { "[onMethodCall] #startService($serviceType); permission failed: $error" }
+                            logger.e { "[onMethodCall] #startService(type: $serviceType); permission failed: $error" }
                             result.error("startService", error.toString(), null)
                             return@requestPermission
                         }
 
                         val notificationPayload = call.extractNotificationPayload()
-                        logger.d { "[onMethodCall] #startService($serviceType); notificationPayload: $notificationPayload" }
+                        val callCid = notificationPayload.callCid
+                        
+                        if (callCid.isEmpty()) {
+                            logger.e { "[onMethodCall] #startService(type: $serviceType); failed (callCid in NotificationPayload is empty)" }
+                            result.error("startService", "callCid in NotificationPayload cannot be empty", null)
+                            return@requestPermission
+                        }
+                        
+                        logger.d { "[onMethodCall] #startService(cid: $callCid, type: $serviceType); notificationPayload: $notificationPayload" }
                         FlutterEngineCache.getInstance().put(STREAM_FLUTTER_BACKGROUND_ENGINE_ID, engine)
                         activity.intent?.putExtra(FlutterFlags.EXTRA_DESTROY_ENGINE_WITH_ACTIVITY, false)
 
-                        result.success(serviceManager.start(notificationPayload, serviceType))
+                        val startResult = serviceManager.start(callCid, notificationPayload, serviceType)
+
+                        println("=== MethodCallHandlerImpl.onMethodCall === startBackgroundService: serviceManager.start result: $startResult")
+                        result.success(startResult)
                     }
                 } catch (e: Throwable) {
-                    logger.e { "[onMethodCall] #startService($serviceType);  failed: $e" }
+                    logger.e(e) { "[onMethodCall] #startService(type: $serviceType);  failed: $e" }
                     result.error("startService", e.toString(), null)
                 }
             }
 
             "updateBackgroundService" -> {
-                val statusString = call.argument<String>("type")
-                val serviceType = ServiceType.valueOf(statusString ?: "call")
-
+                val typeString = call.argument<String>("type")
+                val serviceType = ServiceType.valueOf(typeString ?: "call")
+                
                 try {
                     val notificationPayload = call.extractNotificationPayload()
-                    logger.d { "[onMethodCall] #updateService($serviceType); notificationPayload: $notificationPayload" }
-                    result.success(serviceManager.update(notificationPayload, serviceType))
+                    val callCid = notificationPayload.callCid
+                    
+                    if (callCid.isEmpty()) {
+                        logger.e { "[onMethodCall] #updateService(type: $serviceType); failed (callCid in NotificationPayload is empty)" }
+                        result.error("updateService", "callCid in NotificationPayload cannot be empty", null)
+                        return
+                    }
+                    
+                    logger.d { "[onMethodCall] #updateService(cid: $callCid, type: $serviceType); notificationPayload: $notificationPayload" }
+
+                    val updateResult = serviceManager.update(callCid, notificationPayload, serviceType)
+
+                    result.success(updateResult)
                 } catch (e: Throwable) {
-                    logger.e { "[onMethodCall] #updateService($serviceType); failed: $e" }
+                    logger.e(e) { "[onMethodCall] #updateService(type: $serviceType); failed: $e" }
                     result.error("updateService", e.toString(), null)
                 }
             }
 
             "stopBackgroundService" -> {
-                val statusString = call.argument<String>("type")
-                val serviceType = ServiceType.valueOf(statusString ?: "call")
+                val typeString = call.argument<String>("type")
+                val serviceType = ServiceType.valueOf(typeString ?: "call")
+                val callCid = call.argument<String>("callCid")
 
                 val activity = getActivity()
                 try {
-                    FlutterEngineCache.getInstance().remove(STREAM_FLUTTER_BACKGROUND_ENGINE_ID)
-                    activity?.intent?.removeExtra(FlutterFlags.EXTRA_DESTROY_ENGINE_WITH_ACTIVITY)
-
-                    result.success(serviceManager.stop(serviceType))
+                    val stopResult = serviceManager.stop(callCid, serviceType)
+                    result.success(stopResult)
+                } catch (e: IllegalStateException) {
+                    logger.e(e) { "[onMethodCall] #stopService(cid: $callCid, type: $serviceType); failed: $e" }
+                    result.error("stopBackgroundService", e.message, null)
                 } catch (e: Throwable) {
-                    logger.e { "[onMethodCall] #stopService($serviceType); failed: $e" }
+                    logger.e(e) { "[onMethodCall] #stopService(cid: $callCid, type: $serviceType); failed: $e" }
                     result.error("stopService", e.toString(), null)
                 }
             }

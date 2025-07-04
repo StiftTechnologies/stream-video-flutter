@@ -1,3 +1,18 @@
+## 0.9.6
+* Sync version with `stream_video_flutter` 0.9.6
+
+## 0.9.5
+* Sync version with `stream_video_flutter` 0.9.5
+
+## 0.9.4
+* Sync version with `stream_video_flutter` 0.9.4
+
+## 0.9.3
+* Sync version with `stream_video_flutter` 0.9.3
+
+## 0.9.2
+* Sync version with `stream_video_flutter` 0.9.2
+
 ## 0.9.1
 * Sync version with `stream_video_flutter` 0.9.1
 

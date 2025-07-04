@@ -6,7 +6,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 // 🌎 Project imports:
 import 'package:flutter_dogfooding/core/repos/app_preferences.dart';
-import 'package:flutter_dogfooding/core/repos/token_service.dart';
 import 'package:flutter_dogfooding/router/routes.dart';
 import 'package:flutter_dogfooding/screens/qr_code_scanner.dart';
 import 'package:flutter_dogfooding/theme/app_palette.dart';
@@ -19,6 +18,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:stream_video_push_notification/stream_video_push_notification.dart';
 
 import '../app/user_auth_controller.dart';
+import '../core/model/environment.dart';
 import '../di/injector.dart';
 import '../utils/assets.dart';
 import '../utils/consts.dart';
@@ -47,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Permission.notification,
         Permission.camera,
         Permission.microphone,
+        if (CurrentPlatform.isAndroid) Permission.phone,
       ].request();
 
       StreamVideoPushNotificationManager.ensureFullScreenIntentPermission();
@@ -59,7 +60,10 @@ class _HomeScreenState extends State<HomeScreen> {
           case ServiceType.call:
             call.reject(reason: CallRejectReason.cancel());
           case ServiceType.screenSharing:
-            StreamVideoFlutterBackground.stopService(ServiceType.screenSharing);
+            StreamVideoFlutterBackground.stopService(
+              ServiceType.screenSharing,
+              callCid: call.callCid.value,
+            );
             call.setScreenShareEnabled(enabled: false);
         }
       },
@@ -203,8 +207,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final theme = Theme.of(context);
     final size = MediaQuery.sizeOf(context);
+    final isHorizontal = size.width > size.height || size.height < 600;
     final width = math.min(size.width, kMaxWidthRegularScreen);
     final name = currentUser!.name;
+
+    final logo = ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 220),
+      child: Hero(
+        tag: 'stream_logo',
+        child: Image.asset(
+          streamVideoIconAsset,
+          width: width * 0.6,
+        ),
+      ),
+    );
+
+    final appTitle = [
+      Text('Stream', style: theme.textTheme.headlineMedium),
+      Text(
+        '[Video Calling]',
+        style: theme.textTheme.headlineMedium?.apply(
+          color: AppColorPalette.appGreen,
+        ),
+      ),
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -246,22 +272,23 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Hero(
-                  tag: 'stream_logo',
-                  child: Image.asset(
-                    streamVideoIconAsset,
-                    width: width * 0.6,
+                if (isHorizontal) ...[
+                  Row(
+                    children: [
+                      Expanded(child: logo),
+                      const SizedBox(width: 24),
+                      Column(
+                        children: appTitle,
+                      )
+                    ],
                   ),
-                ),
-                const SizedBox(height: 24),
-                Text('Stream', style: theme.textTheme.headlineMedium),
-                Text(
-                  '[Video Calling]',
-                  style: theme.textTheme.headlineMedium?.apply(
-                    color: AppColorPalette.appGreen,
-                  ),
-                ),
-                const SizedBox(height: 48),
+                  const SizedBox(height: 12),
+                ] else ...[
+                  logo,
+                  const SizedBox(height: 24),
+                  ...appTitle,
+                  const SizedBox(height: 24),
+                ],
                 Text(
                   'Start a new call, join a meeting by\n'
                   'entering the call ID or by scanning\n'
@@ -410,6 +437,15 @@ class _JoinForm extends StatelessWidget {
       environment = Environment.fromBaseUrl(uri.origin);
     } on StateError catch (_) {
       // no valid environment found
+      return;
+    }
+
+    if (environment == Environment.livestream) {
+      // Example: https://livestream-react-demo.vercel.app/?id=6G9bxsMaFbMiGvLWWP85d&type=livestream
+      final callId = uri.queryParameters['id'];
+      if (callId != null) {
+        LivestreamRoute($extra: callId).push(context);
+      }
       return;
     }
 

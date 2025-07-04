@@ -1,4 +1,5 @@
 // 🎯 Dart imports:
+import 'dart:async';
 import 'dart:convert';
 
 // 🐦 Flutter imports:
@@ -41,6 +42,7 @@ class CallScreen extends StatefulWidget {
 
 class _CallScreenState extends State<CallScreen> {
   late final _userChatRepo = locator.get<UserChatRepository>();
+  late final _videoEffectsManager = StreamVideoEffectsManager(widget.call);
 
   Channel? _channel;
   ParticipantLayoutMode _currentLayoutMode = ParticipantLayoutMode.grid;
@@ -88,30 +90,6 @@ class _CallScreenState extends State<CallScreen> {
     if (mounted) setState(() {});
   }
 
-  void showChat(BuildContext context) {
-    showModalBottomSheet<dynamic>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(16),
-        ),
-      ),
-      builder: (_) {
-        final size = MediaQuery.sizeOf(context);
-        final viewInsets = MediaQuery.viewInsetsOf(context);
-
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          height: size.height * 0.6 + viewInsets.bottom,
-          padding: EdgeInsets.only(bottom: viewInsets.bottom),
-          child: ChatBottomSheet(channel: _channel!),
-        );
-      },
-    );
-  }
-
   void showParticipants(BuildContext context) {
     CallParticipantsRoute($extra: widget.call).push(context);
   }
@@ -152,20 +130,18 @@ class _CallScreenState extends State<CallScreen> {
               showFeedbackDialog(context, call: widget.call);
             }
           },
-          callContentBuilder: (
+          callContentWidgetBuilder: (
             BuildContext context,
             Call call,
-            CallState callState,
           ) {
             return StreamCallContent(
               call: call,
-              callState: callState,
               layoutMode: _currentLayoutMode,
               pictureInPictureConfiguration:
                   const PictureInPictureConfiguration(
                 enablePictureInPicture: true,
               ),
-              callParticipantsBuilder: (context, call, callState) {
+              callParticipantsWidgetBuilder: (context, call) {
                 return Stack(
                   children: [
                     Column(
@@ -173,7 +149,6 @@ class _CallScreenState extends State<CallScreen> {
                         Expanded(
                           child: StreamCallParticipants(
                             call: call,
-                            participants: callState.callParticipants,
                             layoutMode: _currentLayoutMode,
                           ),
                         ),
@@ -189,36 +164,50 @@ class _CallScreenState extends State<CallScreen> {
                         bottom: 0,
                         left: 0,
                         right: 0,
-                        child: SettingsMenu(
-                          call: call,
-                          onReactionSend: (_) =>
-                              setState(() => _moreMenuVisible = false),
-                          onStatsPressed: () => setState(
-                            () {
-                              showStats(context);
-                              _moreMenuVisible = false;
-                            },
+                        child: Align(
+                          alignment: Alignment.bottomLeft,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 500),
+                            child: SettingsMenu(
+                              call: call,
+                              videoEffectsManager: _videoEffectsManager,
+                              onReactionSend: (_) =>
+                                  setState(() => _moreMenuVisible = false),
+                              onStatsPressed: () => setState(
+                                () {
+                                  showStats(context);
+                                  _moreMenuVisible = false;
+                                },
+                              ),
+                              onAudioOutputChange: (_, {closeMenu = true}) {
+                                if (closeMenu) {
+                                  setState(() => _moreMenuVisible = false);
+                                }
+                              },
+                              onAudioInputChange: (_) =>
+                                  setState(() => _moreMenuVisible = false),
+                            ),
                           ),
-                          onAudioOutputChange: (_) =>
-                              setState(() => _moreMenuVisible = false),
-                          onAudioInputChange: (_) =>
-                              setState(() => _moreMenuVisible = false),
                         ),
                       ),
                     ],
-                    if (!_moreMenuVisible &&
-                        (call.state.valueOrNull?.otherParticipants.isEmpty ??
-                            false))
+                    if (!_moreMenuVisible)
                       Positioned(
                         bottom: 0,
                         left: 0,
                         right: 0,
-                        child: ShareCallCard(callId: call.id),
+                        child: PartialCallStateBuilder(
+                          call: call,
+                          selector: (state) => state.otherParticipants.isEmpty,
+                          builder: (context, isEmpty) => isEmpty
+                              ? ShareCallWelcomeCard(callId: call.id)
+                              : const SizedBox.shrink(),
+                        ),
                       )
                   ],
                 );
               },
-              callAppBarBuilder: (context, call, callState) {
+              callAppBarWidgetBuilder: (context, call) {
                 return CallAppBar(
                   call: call,
                   leadingWidth: 120,
@@ -231,22 +220,25 @@ class _CallScreenState extends State<CallScreen> {
                           });
                         },
                       ),
-                      if (call.state.valueOrNull?.localParticipant != null)
-                        FlipCameraOption(
-                          call: call,
-                          localParticipant: call.state.value.localParticipant!,
-                        ),
+                      PartialCallStateBuilder(
+                        call: call,
+                        selector: (state) => state.localParticipant != null,
+                        builder: (context, hasLocalParticipant) =>
+                            hasLocalParticipant
+                                ? FlipCameraOption(
+                                    call: call,
+                                  )
+                                : const SizedBox.shrink(),
+                      ),
                     ],
                   ),
                   title: CallDurationTitle(call: call),
                 );
               },
-              callControlsBuilder: (
+              callControlsWidgetBuilder: (
                 BuildContext context,
                 Call call,
-                CallState callState,
               ) {
-                final localParticipant = callState.localParticipant!;
                 return Container(
                   padding: const EdgeInsets.only(
                     top: 16,
@@ -266,7 +258,6 @@ class _CallScreenState extends State<CallScreen> {
                           }),
                       ToggleScreenShareOption(
                         call: call,
-                        localParticipant: localParticipant,
                         screenShareConstraints: const ScreenShareConstraints(
                           useiOSBroadcastExtension: true,
                         ),
@@ -280,34 +271,30 @@ class _CallScreenState extends State<CallScreen> {
                       ),
                       ToggleMicrophoneOption(
                         call: call,
-                        localParticipant: localParticipant,
                         disabledMicrophoneBackgroundColor:
                             AppColorPalette.appRed,
                       ),
                       ToggleCameraOption(
                         call: call,
-                        localParticipant: localParticipant,
                         disabledCameraBackgroundColor: AppColorPalette.appRed,
                       ),
                       const Spacer(),
-                      BadgedCallOption(
-                        callControlOption: CallControlOption(
-                          icon: const Icon(Icons.people),
-                          onPressed: _channel != null //
-                              ? () => showParticipants(context)
-                              : null,
-                        ),
-                        badgeCount: callState.callParticipants.length,
+                      PartialCallStateBuilder(
+                        call: call,
+                        selector: (state) => state.callParticipants.length,
+                        builder: (context, length) {
+                          return BadgedCallOption(
+                            callControlOption: CallControlOption(
+                              icon: const Icon(Icons.people),
+                              onPressed: _channel != null //
+                                  ? () => showParticipants(context)
+                                  : null,
+                            ),
+                            badgeCount: length,
+                          );
+                        },
                       ),
-                      BadgedCallOption(
-                        callControlOption: CallControlOption(
-                          icon: const Icon(Icons.question_answer),
-                          onPressed: _channel != null //
-                              ? () => showChat(context)
-                              : null,
-                        ),
-                        badgeCount: _channel?.state?.unreadCount ?? 0,
-                      )
+                      _ShowChatButton(channel: _channel),
                     ]),
                   ),
                 );
@@ -316,6 +303,83 @@ class _CallScreenState extends State<CallScreen> {
           },
         ),
       ),
+    );
+  }
+}
+
+class _ShowChatButton extends StatefulWidget {
+  const _ShowChatButton({required this.channel});
+  final Channel? channel;
+
+  @override
+  State<_ShowChatButton> createState() => __ShowChatButtonState();
+}
+
+class __ShowChatButtonState extends State<_ShowChatButton> {
+  StreamSubscription<int>? _unreadCountSubscription;
+  int _unreadCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenToUnreadCount();
+  }
+
+  void _listenToUnreadCount() {
+    _unreadCountSubscription = widget.channel?.state?.unreadCountStream.listen(
+      (count) => setState(() => _unreadCount = count),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _ShowChatButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.channel?.state != oldWidget.channel?.state) {
+      _unreadCountSubscription?.cancel();
+      _listenToUnreadCount();
+    }
+  }
+
+  @override
+  void dispose() {
+    _unreadCountSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BadgedCallOption(
+      callControlOption: CallControlOption(
+        icon: const Icon(Icons.question_answer),
+        onPressed: widget.channel != null //
+            ? () => showChat(context)
+            : null,
+      ),
+      badgeCount: _unreadCount == 0 ? null : _unreadCount,
+    );
+  }
+
+  void showChat(BuildContext context) {
+    showModalBottomSheet<dynamic>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(16),
+        ),
+      ),
+      builder: (_) {
+        final size = MediaQuery.sizeOf(context);
+        final viewInsets = MediaQuery.viewInsetsOf(context);
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: size.height * 0.6 + viewInsets.bottom,
+          padding: EdgeInsets.only(bottom: viewInsets.bottom),
+          child: ChatBottomSheet(channel: widget.channel!),
+        );
+      },
     );
   }
 }

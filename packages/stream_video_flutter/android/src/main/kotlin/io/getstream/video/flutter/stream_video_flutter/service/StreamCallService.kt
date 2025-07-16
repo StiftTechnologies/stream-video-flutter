@@ -105,14 +105,13 @@ open class StreamCallService : Service() {
     }
     
     private fun getPayloadFromIntent(intent: Intent): NotificationPayload? {
-        @Suppress("DEPRECATION")
-        val payload = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra("notificationPayload", NotificationPayload::class.java)
-        } else {
-            intent.getParcelableExtra("notificationPayload")
+        return try {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra("notificationPayload") as? NotificationPayload
+        } catch (e: Exception) {
+            logger.e(e) { "[getPayloadFromIntent] Failed to get payload from intent: ${e.message}" }
+            null
         }
-        
-        return payload
     }
 
     private fun startNewCall(callCid: String, payload: NotificationPayload, startId: Int) {

@@ -59,6 +59,7 @@ void registerMockFallbackValues() {
   );
   registerFallbackValue(SfuReconnectionStrategy.fast);
   registerFallbackValue(defaultMediaDevice);
+  registerFallbackValue(MockStreamVideo());
 }
 
 Call createStubCall({
@@ -301,6 +302,7 @@ MockCallSession setupMockCallSession() {
       reconnectDetails: any(named: 'reconnectDetails'),
       onRtcManagerCreatedCallback: any(named: 'onRtcManagerCreatedCallback'),
       isAnonymousUser: any(named: 'isAnonymousUser'),
+      capabilities: any(named: 'capabilities'),
     ),
   ).thenAnswer(
     (_) => Future.value(
@@ -364,6 +366,7 @@ MockSessionFactory setupMockSessionFactory({MockCallSession? callSession}) {
       statsOptions: any(named: 'statsOptions'),
       onReconnectionNeeded: any(named: 'onReconnectionNeeded'),
       clientPublishOptions: any(named: 'clientPublishOptions'),
+      streamVideo: any(named: 'streamVideo'),
     ),
   ).thenAnswer(
     (_) => Future.value(callSession ?? setupMockCallSession()),

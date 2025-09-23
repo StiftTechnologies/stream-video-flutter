@@ -72,9 +72,11 @@ class _StreamVideoRendererState extends State<StreamVideoRenderer> {
   Widget build(BuildContext context) {
     final trackState =
         widget.participant.publishedTracks[widget.videoTrackType];
+    final isTrackPaused =
+        widget.participant.isTrackPaused(widget.videoTrackType);
 
     final Widget child;
-    if (trackState == null) {
+    if (trackState == null || isTrackPaused) {
       // The video track hasn't been published or subscribed yet.
       child = widget.placeholderBuilder.call(context);
     } else if (trackState is! RemoteTrackState) {
@@ -153,7 +155,10 @@ class _StreamVideoRendererState extends State<StreamVideoRenderer> {
     latestVisibilityInfo = info;
     final fraction = info.visibleFraction;
 
-    final prevVisibility = widget.participant.viewportVisibility;
+    final prevVisibility = widget.videoTrackType.isScreenShare
+        ? widget.participant.screenShareViewportVisibility
+        : widget.participant.viewportVisibility;
+
     final visibility = ViewportVisibility.fromVisibleFraction(fraction);
 
     // Update the viewport visibility of the participant.
@@ -162,6 +167,7 @@ class _StreamVideoRendererState extends State<StreamVideoRenderer> {
         sessionId: widget.participant.sessionId,
         userId: widget.participant.userId,
         visibility: visibility,
+        trackType: widget.videoTrackType,
       );
     }
 

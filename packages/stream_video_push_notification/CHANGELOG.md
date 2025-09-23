@@ -1,3 +1,14 @@
+## 0.10.4
+* Sync version with `stream_video_flutter` 0.10.4
+
+## 0.10.3
+* Sync version with `stream_video_flutter` 0.10.3
+
+## 0.10.2
+
+🔄 Dependency updates
+* Updated `flutter_callkit_incoming` dependency to version 2.5.7. That version contains Android 14 compatibility fixes for ringing notifications and lock screen handling.
+
 ## 0.10.1
 
 ✅ Added

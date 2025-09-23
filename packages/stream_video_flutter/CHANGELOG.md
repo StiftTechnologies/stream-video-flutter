@@ -1,3 +1,44 @@
+## 0.10.4
+
+✅ Added
+* Extended `CallParticipantState` with `participantSource`. This indicates the participant's source channel (e.g., WebRTC, RTMP, WHIP) and can be used in filtering and sorting criteria.
+* Livestream sorting preset now prioritises RTMP sources in layout sorting.
+* Automatic SFU-driven pausing of inbound video to save bandwidth and prevent visual artifacts:
+  * New `SfuClientCapability.subscriberVideoPause` (on by default). Control via `Call.enableClientCapabilities()` / `Call.disableClientCapabilities()`.
+  * New `SfuInboundStateNotificationEvent` notifies when inbound tracks are paused or resumed.
+  * `CallParticipantState.pausedTracks` and `CallParticipantState.isTrackPaused()` let you check which tracks are currently paused.
+* Added capability to remove a participant from a call via `call.kickUser()`. Requires the `kick-user` permission.
+
+🐞 Fixed
+* Multitasking camera on iOS is now enabled only once and kept enabled. This fixes potential errors when quickly toggling camera.
+
+## 0.10.3
+
+🐞 Fixed
+* Handled SFU stats reporting failures gracefully
+
+✅ Added
+* Added option to configure android audio configuration when initializing `StreamVideo` instance by providing `androidAudioConfiguration` to `StreamVideoOptions`.
+
+## 0.10.2
+
+✅ Added
+* Added support for setting video filters before the video track is created by listening for local participant state changes and applying the filters once the video is enabled.
+* Added support for setting video filters on a specific video track before the local participant is available — useful for scenarios like lobby previews with a temporary video track.
+* Introduced the `reconnectTimeout` option in `CallPreferences`, allowing you to set the maximum duration the SDK will attempt to reconnect to a call before giving up.
+
+🔄 Changed
+* Deprecated `callRejoinTimeout` in `RetryConfig`, instead added `networkAvailabilityTimeout` to `CallPreferences` to control how long the SDK waits for network connectivity to be restored during reconnection attempts before timing out.
+
+🔄 Dependency updates
+* Updated `flutter_callkit_incoming` dependency to version 2.5.7. That version contains Android 14 compatibility fixes for ringing notifications and lock screen handling.
+
+🐞 Fixed
+* (Android) CircleTransform Argument type mismatch on Bitmap.Config?
+* Sorting of participants after screen sharing stopped.
+* Fixed an issue where video filters were cleared after toggling the camera.
+* (Windows) Fixed `DtlsSrtpKeyAgreement` audio constraint parameter mapping
+
 ## 0.10.1
 
 🐞 Fixed

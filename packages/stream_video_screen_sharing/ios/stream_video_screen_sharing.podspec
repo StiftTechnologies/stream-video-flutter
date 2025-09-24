@@ -15,6 +15,7 @@ Official Screen Sharing Plugin for Stream Video.
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
+  s.static_framework = true
   s.platform = :ios, '14.0'
 
   # Flutter.framework does not contain a i386 slice.

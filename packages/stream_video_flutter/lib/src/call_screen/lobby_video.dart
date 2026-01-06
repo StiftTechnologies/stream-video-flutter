@@ -19,6 +19,7 @@ class StreamLobbyVideo extends StatefulWidget {
     this.onCameraTrackSet,
     this.streamVideo,
     this.additionalActionsBuilder,
+    this.initialCameraDevice,
   });
 
   /// Represents a call.
@@ -26,6 +27,8 @@ class StreamLobbyVideo extends StatefulWidget {
 
   /// The color of the focus border.
   final Color? cardBackgroundColor;
+
+  final RtcMediaDevice? initialCameraDevice;
 
   /// Theme for the avatar.
   final StreamUserAvatarThemeData? userAvatarTheme;
@@ -75,7 +78,11 @@ class _StreamLobbyVideoState extends State<StreamLobbyVideo> {
     }
 
     try {
-      final cameraTrack = await RtcLocalTrack.camera();
+      final cameraTrack = await RtcLocalTrack.camera(
+        constraints: CameraConstraints(
+          deviceId: widget.initialCameraDevice?.id,
+        ),
+      );
       await widget.onCameraTrackSet?.call(cameraTrack);
 
       return setState(() => _cameraTrack = cameraTrack);
@@ -142,7 +149,9 @@ class _StreamLobbyVideoState extends State<StreamLobbyVideo> {
                       children: [
                         if (cameraEnabled)
                           VideoTrackRenderer(
-                            mirror: true,
+                            mirror:
+                                _cameraTrack!.mediaConstraints.facingMode ==
+                                FacingMode.user,
                             videoTrack: _cameraTrack!,
                             placeholderBuilder: placeHolderBuilder,
                           )
@@ -179,8 +188,9 @@ class _StreamLobbyVideoState extends State<StreamLobbyVideo> {
                     ? const Icon(Icons.mic_rounded)
                     : const Icon(Icons.mic_off_rounded),
                 iconColor: microphoneEnabled ? null : theme.optionOffIconColor,
-                backgroundColor:
-                    microphoneEnabled ? null : theme.optionOffBackgroundColor,
+                backgroundColor: microphoneEnabled
+                    ? null
+                    : theme.optionOffBackgroundColor,
                 onPressed: toggleMicrophone,
               ),
               CallControlOption(
@@ -188,8 +198,9 @@ class _StreamLobbyVideoState extends State<StreamLobbyVideo> {
                     ? const Icon(Icons.videocam_rounded)
                     : const Icon(Icons.videocam_off_rounded),
                 iconColor: cameraEnabled ? null : theme.optionOffIconColor,
-                backgroundColor:
-                    cameraEnabled ? null : theme.optionOffBackgroundColor,
+                backgroundColor: cameraEnabled
+                    ? null
+                    : theme.optionOffBackgroundColor,
                 onPressed: toggleCamera,
               ),
               if (widget.additionalActionsBuilder != null)

@@ -1,3 +1,73 @@
+## 1.2.2
+* Sync version with `stream_video_flutter` 1.2.2
+
+## 1.2.1
+
+🐞 Fixed
+* [iOS/macOS] Fixed crash when VoIP push is received before Flutter fully initializes from the terminated state.
+
+## 1.2.0
+* Sync version with `stream_video_flutter` 1.2.0
+
+## 1.1.0
+* Sync version with `stream_video_flutter` 1.1.0
+
+## 1.0.2
+
+🐞 Fixed
+* Fixed incoming call timeout handling.
+  - Use `streamVideo.observeCoreRingingEventsForBackground()` instead of `streamVideo.observeCallDeclinedRingingEvent()` in `firebaseMessagingBackgroundHandler` to support all necessary events.
+
+## 1.0.1
+* Sync version with `stream_video_flutter` 1.0.1
+
+## 1.0.0
+
+### 🚧 Breaking changes
+
+#### CallKit/Ringing
+This release removes the dependency on `flutter_callkit_incoming`, resulting in several breaking changes to CallKit and ringing functionality:
+
+* **CallKit/ringing configuration:** The initialization process is updated. Replace the `pushParams` parameter in `StreamVideoPushNotificationManager` with the new `pushConfiguration` field (`StreamVideoPushConfiguration`).
+* **Parameter renaming:** The `nameCaller` parameter has been standardized and renamed to `callerName` across all relevant locations.
+* **Removed properties:**
+    * The deprecated `callerCustomizationCallback` and `backgroundVoipCallHandler` have been fully removed from `StreamVideoPushNotificationManager`.
+    * The previously used `appName` field in `pushParams` has been removed as it was deprecated. On iOS, the app’s product name from build settings is now used instead.
+* **API renames and type changes**
+    - `onCallKitEvent` is now `onRingingEvent`
+    - `observeCoreCallKitEvents` is now `observeCoreRingingEvents`
+    - `observeCallAcceptCallKitEvent` is now `observeCallAcceptRingingEvent`
+    - `observeCallDeclinedCallKitEvent` is now `observeCallDeclinedRingingEvent`
+    - `observeCallEndedCallKitEvent` is now `observeCallEndedRingingEvent`
+    - The `CallKitEvent` type is now `RingingEvent`
+---
+
+### 🍏 **Swift Package Manager (SPM)**
+- Added Swift Package Manager (SPM) support for iOS.
+> [!IMPORTANT]  
+> Flutter's iOS SPM is experimental and disabled by default. You can enable it via `flutter config --enable-swift-package-manager`. Flutter will fall back to CocoaPods for plugins that don't support SPM. See the [Flutter SPM docs](https://docs.flutter.dev/packages-and-plugins/swift-package-manager/for-app-developers).
+
+## 0.11.2
+* Sync version with `stream_video_flutter` 0.11.2
+
+## 0.11.1
+* Sync version with `stream_video_flutter` 0.11.1
+
+## 0.11.0
+
+🚧 Build breaking changes
+
+> **Important:** This release includes breaking changes for Android development.
+> 
+> **Android Requirements:**
+> - Minimum compileSDK 36
+> - Android Gradle Plugin >=8.12.1
+> - Gradle wrapper >=8.13
+> - Kotlin 2.2.0
+
+* Updated minimum Flutter version to 3.32.0
+* Updated minimum supported Dart SDK version to 3.8.0
+
 ## 0.10.4
 * Sync version with `stream_video_flutter` 0.10.4
 

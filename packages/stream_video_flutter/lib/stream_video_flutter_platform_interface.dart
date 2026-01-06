@@ -29,7 +29,7 @@ abstract class StreamVideoFlutterPlatform extends PlatformInterface {
   void Function(String callCid)? onBackgroundNotificationContentClick;
 
   void Function(String buttonType, String callCid, ServiceType serviceType)?
-      onBackgroundNotificationButtonClick;
+  onBackgroundNotificationButtonClick;
 
   void Function(String callCid)? onBackgroundNotificationUiLayerDestroyed;
 
@@ -59,25 +59,5 @@ abstract class StreamVideoFlutterPlatform extends PlatformInterface {
     String? callCid,
   }) {
     throw UnimplementedError('isRunningService has not been implemented.');
-  }
-
-  Future<bool?> isBackgroundEffectSupported() {
-    throw UnimplementedError(
-      'isBackgroundEffectSupported has not been implemented.',
-    );
-  }
-
-  Future<void> registerBlurEffectProcessors() {
-    throw UnimplementedError(
-      'registerBlurEffectProcessors has not been implemented.',
-    );
-  }
-
-  Future<void> registerImageEffectProcessors({
-    required String backgroundImageUrl,
-  }) {
-    throw UnimplementedError(
-      'registerImageEffectProcessors has not been implemented.',
-    );
   }
 }

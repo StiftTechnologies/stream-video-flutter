@@ -28,6 +28,8 @@ class _StreamPictureInPictureAndroidViewState
   static const String _pipChannel = 'stream_video_flutter_android_pip';
   static const MethodChannel _methodChannel = MethodChannel(_pipChannel);
 
+  final _logger = taggedLogger(tag: 'SV:StreamPictureInPictureAndroidView');
+
   OverlayEntry? _overlayEntry;
   bool _isOverlayVisible = false;
 
@@ -101,10 +103,17 @@ class _StreamPictureInPictureAndroidViewState
 
   /// Updates the Android side about whether PiP should be allowed based on current call state
   Future<void> _setPictureInPictureAllowed(bool isAllowed) async {
-    await _methodChannel.invokeMethod(
-      'setPictureInPictureAllowed',
-      isAllowed,
-    );
+    try {
+      await _methodChannel.invokeMethod(
+        'setPictureInPictureAllowed',
+        isAllowed,
+      );
+    } catch (e) {
+      _logger.e(
+        () =>
+            '[_setPictureInPictureAllowed] Failed to set picture in picture allowed: $e',
+      );
+    }
   }
 
   void _setupPictureInPictureListener() {
@@ -146,9 +155,7 @@ class _StreamPictureInPictureAndroidViewState
     _overlayEntry = OverlayEntry(
       builder: (context) => AndroidPipOverlay(
         call: call,
-        sort: widget.configuration.sort,
-        customBuilder: widget.configuration.androidPiPConfiguration
-            .callPictureInPictureWidgetBuilder,
+        pictureInPictureConfiguration: widget.configuration,
       ),
     );
 
@@ -180,7 +187,7 @@ class _StreamPictureInPictureAndroidViewState
         callState.localParticipant?.isScreenShareEnabled ?? false;
     final shouldDisableForScreenShare =
         widget.configuration.disablePictureInPictureWhenScreenSharing &&
-            isScreenSharing;
+        isScreenSharing;
 
     return isInCall && !shouldDisableForScreenShare;
   }

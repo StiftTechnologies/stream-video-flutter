@@ -27,8 +27,8 @@ class CoordinatorClientRetry extends CoordinatorClient {
   CoordinatorClientRetry({
     required CoordinatorClient delegate,
     required RetryPolicy retryPolicy,
-  })  : _delegate = delegate,
-        _retryManager = RpcRetryManager(retryPolicy);
+  }) : _delegate = delegate,
+       _retryManager = RpcRetryManager(retryPolicy);
 
   final CoordinatorClient _delegate;
   final RpcRetryManager _retryManager;
@@ -279,6 +279,24 @@ class CoordinatorClientRetry extends CoordinatorClient {
       ),
       (error, nextAttemptDelay) async {
         _logRetry('joinCall', error, nextAttemptDelay);
+      },
+    );
+  }
+
+  @override
+  Future<Result<List<String>>> ringCall({
+    required StreamCallCid callCid,
+    List<String> membersIds = const [],
+    bool? video,
+  }) {
+    return _retryManager.execute(
+      () => _delegate.ringCall(
+        callCid: callCid,
+        membersIds: membersIds,
+        video: video,
+      ),
+      (error, nextAttemptDelay) async {
+        _logRetry('ringCall', error, nextAttemptDelay);
       },
     );
   }
@@ -749,7 +767,8 @@ class CoordinatorClientRetry extends CoordinatorClient {
     Duration nextAttemptDelay,
   ) {
     _logger.w(
-      () => '[$req] failed: $error, '
+      () =>
+          '[$req] failed: $error, '
           'retrying in ${nextAttemptDelay.inMilliseconds} ms',
     );
   }

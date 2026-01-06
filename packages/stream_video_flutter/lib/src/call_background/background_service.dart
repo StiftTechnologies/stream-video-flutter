@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:permission_handler/permission_handler.dart';
+import 'package:collection/collection.dart';
+import 'package:rxdart/transformers.dart';
 import 'package:stream_video/stream_video.dart';
 
 import '../../stream_video_flutter_background.dart';
@@ -11,9 +12,7 @@ import 'model/service_type.dart';
 const _tag = 'SV:Background';
 const _btnCancel = 'cancel';
 
-enum ButtonType {
-  cancel;
-}
+enum ButtonType { cancel }
 
 typedef NotificationOptionsBuilder = NotificationOptions Function(Call);
 
@@ -37,8 +36,7 @@ class StreamBackgroundService {
   StreamBackgroundService._();
 
   static final StreamBackgroundService _instance = StreamBackgroundService._();
-
-  static StreamSubscription<List<Call>>? _activeCalSubscription;
+  static final Subscriptions _subscriptions = Subscriptions();
 
   // Map to store context for each managed call
   final Map<String, _CallServiceContext> _managedCalls = {};
@@ -71,8 +69,9 @@ class StreamBackgroundService {
         return;
       }
 
-      _instance._logger
-          .d(() => '<$callCid> [onNotificationContentClick] handling click');
+      _instance._logger.d(
+        () => '<$callCid> [onNotificationContentClick] handling click',
+      );
       await onNotificationClick?.call(callContext.call);
     });
 
@@ -114,27 +113,42 @@ class StreamBackgroundService {
       }
     });
 
-    StreamVideoFlutterBackground.setOnPlatformUiLayerDestroyed(
-        (String callCid) async {
-      final context = _instance._managedCalls[callCid];
-      if (context == null) {
-        _instance._logger.w(
+    StreamVideoFlutterBackground.setOnPlatformUiLayerDestroyed((
+      String callCid,
+    ) async {
+      // When the platform UI layer is destroyed (Activity destroyed on Android),
+      // we need to leave all active calls to properly close WebSocket/WebRTC connections.
+      // This is called when the app is swiped from recents or the Activity is destroyed.
+
+      if (callCid.isEmpty) {
+        // No specific callCid provided - leave ALL managed calls
+        _instance._logger.i(
           () =>
-              '<$callCid> [onPlatformUiLayerDestroyed] no managed call for callCid',
+              '[onPlatformUiLayerDestroyed] UI layer destroyed, leaving all ${_instance._managedCalls.length} active calls',
         );
+
+        final callContexts = _instance._managedCalls.values.toList();
+        for (final callContext in callContexts) {
+          try {
+            await onPlatformUiLayerDestroyed?.call(callContext.call);
+            if (onPlatformUiLayerDestroyed == null) {
+              await callContext.call.leave();
+            }
+          } catch (e) {
+            _instance._logger.e(
+              () =>
+                  '<${callContext.call.callCid.value}> [onPlatformUiLayerDestroyed] failed to leave: $e',
+            );
+          }
+        }
         return;
       }
-
-      _instance._logger.d(
-        () =>
-            '<$callCid> [onPlatformUiLayerDestroyed] handling UI layer destroyed',
-      );
-      await onPlatformUiLayerDestroyed?.call(context.call);
     });
 
-    _activeCalSubscription?.cancel();
-    _activeCalSubscription =
-        streamVideo.listenActiveCalls((List<Call> currentCalls) async {
+    _subscriptions.cancelAll();
+    final activeCallSubscription = streamVideo.listenActiveCalls((
+      List<Call> currentCalls,
+    ) async {
       final currentCallCids = currentCalls.map((c) => c.callCid.value).toSet();
       final managedCallCids = _instance._managedCalls.keys.toSet();
 
@@ -171,6 +185,39 @@ class StreamBackgroundService {
         }
       }
     });
+
+    _subscriptions.add(1, activeCallSubscription);
+
+    final rtcEventsSubscription = RtcMediaDeviceNotifier.instance
+        .nativeWebRtcEventsStream()
+        .whereType<ScreenSharingStoppedEvent>()
+        .listen((event) async {
+          final trackId = event.data?['trackId'] as String?;
+          if (trackId != null) {
+            final call = streamVideo.activeCalls.singleWhereOrNull((call) {
+              if (call.state.value.localParticipant == null) {
+                return false;
+              }
+
+              return call
+                      .getTrack(
+                        call.state.value.localParticipant!.trackIdPrefix,
+                        SfuTrackType.screenShare,
+                      )
+                      ?.mediaTrack
+                      .id ==
+                  trackId;
+            });
+
+            if (call != null) {
+              await _instance.stopScreenSharingNotificationService(
+                call.callCid.value,
+              );
+            }
+          }
+        });
+
+    _subscriptions.add(2, rtcEventsSubscription);
   }
 
   Future<void> _startManagingCall(
@@ -181,16 +228,6 @@ class StreamBackgroundService {
 
     _logger.d(() => '<$callCid> [_startManagingCall] Starting management.');
     try {
-      // TODO: Why do we need to check this?
-      final micPermissionGranted = await Permission.microphone.isGranted;
-      if (!micPermissionGranted) {
-        _logger.d(
-          () =>
-              '<$callCid> [_startManagingCall] cannot start service, microphone permission not granted',
-        );
-        return;
-      }
-
       final options = optionsBuilder.call(call);
       final payload = NotificationPayload(
         callCid: callCid,
@@ -225,12 +262,12 @@ class StreamBackgroundService {
             // TODO: That is a lot of service updates. We should only update the service if the options have changed.
             final updateResult =
                 await StreamVideoFlutterBackground.updateService(
-              NotificationPayload(
-                callCid: callCid,
-                options: updateOptions,
-              ),
-              ServiceType.call,
-            );
+                  NotificationPayload(
+                    callCid: callCid,
+                    options: updateOptions,
+                  ),
+                  ServiceType.call,
+                );
             _logger.v(
               () =>
                   '<$callCid> [_startManagingCall] call service update result: $updateResult',
@@ -280,9 +317,9 @@ class StreamBackgroundService {
       // If a call ends, we might also want to stop its associated screen share service.
       final screenShareStopResult =
           await StreamVideoFlutterBackground.stopService(
-        ServiceType.screenSharing,
-        callCid: callCid,
-      );
+            ServiceType.screenSharing,
+            callCid: callCid,
+          );
 
       _logger.d(
         () =>
@@ -293,8 +330,9 @@ class StreamBackgroundService {
     }
   }
 
-  // Screen sharing methods
-  Future<void> startScreenSharingNotificationService(Call call) async {
+  /// Starts the screen sharing notification service.
+  /// Returns true if the service was started successfully, false otherwise.
+  Future<bool> startScreenSharingNotificationService(Call call) async {
     final callCid = call.callCid.value;
 
     _logger.d(
@@ -304,17 +342,77 @@ class StreamBackgroundService {
 
     final options =
         (_screenShareNotificationOptionsBuilder ?? _screenShareDefaultOptions)
-            .call(call);
+            .call(
+              call,
+            );
 
     final payload = NotificationPayload(
       callCid: callCid,
       options: options,
     );
 
-    await StreamVideoFlutterBackground.startService(
-      payload,
-      ServiceType.screenSharing,
+    try {
+      await StreamVideoFlutterBackground.startService(
+        payload,
+        ServiceType.screenSharing,
+      );
+    } catch (e) {
+      _logger.w(
+        () =>
+            '<$callCid> [startScreenSharingNotificationService] Failed to start screen sharing service $e.',
+      );
+
+      return false;
+    }
+
+    // Wait for the foreground service to be fully ready.
+    // Android requires FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION to be running
+    // before screen sharing can be started.
+    if (CurrentPlatform.isAndroid) {
+      final isReady = await _waitForScreenShareServiceReady(callCid);
+      if (!isReady) {
+        _logger.e(
+          () =>
+              '<$callCid> [startScreenSharingNotificationService] Service failed to start.',
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// Waits for the screen share service to be ready.
+  /// Returns true if ready, false if timeout.
+  Future<bool> _waitForScreenShareServiceReady(String callCid) async {
+    const timeout = Duration(seconds: 3);
+    const interval = Duration(milliseconds: 50);
+    final stopwatch = Stopwatch()..start();
+
+    while (stopwatch.elapsed < timeout) {
+      final isRunning = await StreamVideoFlutterBackground.isServiceRunning(
+        ServiceType.screenSharing,
+        callCid: callCid,
+      );
+
+      if (isRunning) {
+        _logger.d(
+          () =>
+              '<$callCid> [_waitForScreenShareServiceReady] Screen sharing service ready after ${stopwatch.elapsedMilliseconds}ms',
+        );
+
+        return true;
+      }
+
+      await Future<void>.delayed(interval);
+    }
+
+    _logger.w(
+      () =>
+          '<$callCid> [_waitForScreenShareServiceReady] Timeout waiting for service to be ready',
     );
+
+    return false;
   }
 
   Future<void> stopScreenSharingNotificationService(String callCid) async {

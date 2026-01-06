@@ -23,16 +23,31 @@ void main() {
 
       when(() => mockCallStateEmitter.value).thenReturn(mockCallState);
       when(() => mockCall.state).thenReturn(mockCallStateEmitter);
-      when(() => mockCall.partialState<CallParticipantState?>(any()))
-          .thenAnswer((invocation) {
+      when(
+        () => mockCall.partialState<CallParticipantState?>(any()),
+      ).thenAnswer((invocation) {
         final CallStateSelector<CallParticipantState?> selector =
             invocation.positionalArguments[0];
         final filtered = selector(mockCallState);
         return Stream.value(filtered);
       });
+      when(
+        () => mockCall
+            .partialState<({bool isScreenShareEnabled, CallStatus status})>(
+              any(),
+            ),
+      ).thenAnswer((invocation) {
+        return Stream.value(
+          (
+            isScreenShareEnabled: false,
+            status: CallStatus.connected(),
+          ),
+        );
+      });
 
-      when(() => mockCallState.localParticipant)
-          .thenReturn(mockLocalParticipant);
+      when(
+        () => mockCallState.localParticipant,
+      ).thenReturn(mockLocalParticipant);
       when(() => mockCallState.status).thenReturn(CallStatus.connected());
       when(() => mockCallState.callParticipants).thenReturn([]);
 
@@ -95,19 +110,17 @@ class _CallContentExample extends StatelessWidget {
       child: TestWrapper(
         child: StreamCallContent(
           call: mockCall,
-          callState: mockCallState,
           extendBody: extendBody,
-          callAppBarBuilder: (context, call, callState) => AppBar(
+          callAppBarWidgetBuilder: (context, call) => AppBar(
             title: const Text('Custom App Bar'),
           ),
-          callParticipantsBuilder: (context, call, callState) =>
-              const ColoredBox(
+          callParticipantsWidgetBuilder: (context, call) => const ColoredBox(
             color: Colors.green,
             child: Center(
               child: Text('Custom Participants View'),
             ),
           ),
-          callControlsBuilder: (context, call, callState) => Row(
+          callControlsWidgetBuilder: (context, call) => Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(

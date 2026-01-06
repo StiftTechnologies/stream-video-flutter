@@ -23,7 +23,7 @@ class VideoEvent {
     required this.user,
     required this.call,
     this.members = const [],
-    this.reason,
+    required this.reason,
     required this.egressId,
     required this.capturedAt,
     required this.sessionId,
@@ -102,13 +102,7 @@ class VideoEvent {
   /// Call members
   List<MemberResponse> members;
 
-  ///
-  /// Please note: This property should have been non-nullable! Since the specification file
-  /// does not include a default value (using the "default:" property), however, the generated
-  /// source code must fall back to having a nullable type.
-  /// Consider adding a "default:" property in the specification file to hide this note.
-  ///
-  String? reason;
+  String reason;
 
   String egressId;
 
@@ -134,8 +128,10 @@ class VideoEvent {
 
   bool notifyUser;
 
+  /// The user ID who is receiving the warning
   String userId;
 
+  /// The warning message
   String message;
 
   ReactionResponse reaction;
@@ -310,7 +306,7 @@ class VideoEvent {
       (user.hashCode) +
       (call.hashCode) +
       (members.hashCode) +
-      (reason == null ? 0 : reason!.hashCode) +
+      (reason.hashCode) +
       (egressId.hashCode) +
       (capturedAt.hashCode) +
       (sessionId.hashCode) +
@@ -377,11 +373,7 @@ class VideoEvent {
     json[r'user'] = this.user;
     json[r'call'] = this.call;
     json[r'members'] = this.members;
-    if (this.reason != null) {
-      json[r'reason'] = this.reason;
-    } else {
-      json[r'reason'] = null;
-    }
+    json[r'reason'] = this.reason;
     json[r'egress_id'] = this.egressId;
     json[r'captured_at'] = this.capturedAt.toUtc().toIso8601String();
     json[r'session_id'] = this.sessionId;
@@ -481,7 +473,7 @@ class VideoEvent {
         user: UserResponsePrivacyFields.fromJson(json[r'user'])!,
         call: CallResponse.fromJson(json[r'call'])!,
         members: MemberResponse.listFromJson(json[r'members']),
-        reason: mapValueOfType<String>(json, r'reason'),
+        reason: mapValueOfType<String>(json, r'reason')!,
         egressId: mapValueOfType<String>(json, r'egress_id')!,
         capturedAt: mapDateTime(json, r'captured_at', r'')!,
         sessionId: mapValueOfType<String>(json, r'session_id')!,
@@ -492,9 +484,7 @@ class VideoEvent {
         //MANUAL_EDIT mapCast
         capabilitiesByRole: json[r'capabilities_by_role'] == null
             ? const {}
-            : mapCastOfType<String, List<String>>(
-                    json, r'capabilities_by_role') ??
-                const {},
+            : capabilitiesFromJson(json['capabilities_by_role']),
         notifyUser: mapValueOfType<bool>(json, r'notify_user')!,
         userId: mapValueOfType<String>(json, r'user_id')!,
         message: mapValueOfType<String>(json, r'message')!,
@@ -546,6 +536,24 @@ class VideoEvent {
       );
     }
     return null;
+  }
+
+  // MANUAL_EDIT: capabilitiesFromJson
+  static Map<String, List<String>> capabilitiesFromJson(
+    dynamic json, {
+    bool growable = false,
+  }) {
+    final map = <String, List<String>>{};
+    if (json is Map && json.isNotEmpty) {
+      // ignore: parameter_assignments
+      json = json.cast<String, dynamic>();
+      for (final entry in json.entries) {
+        if (entry.value is List) {
+          map[entry.key] = (entry.value as List).cast<String>();
+        }
+      }
+    }
+    return growable ? map : Map.unmodifiable(map);
   }
 
   static List<VideoEvent> listFromJson(
@@ -607,6 +615,7 @@ class VideoEvent {
     'user',
     'call',
     'members',
+    'reason',
     'egress_id',
     'captured_at',
     'session_id',

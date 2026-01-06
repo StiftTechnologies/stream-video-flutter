@@ -14,7 +14,6 @@ class StreamIncomingCallContent extends StatefulWidget {
   const StreamIncomingCallContent({
     super.key,
     required this.call,
-    @Deprecated(PartialStateDeprecationMessage.callState) this.callState,
     this.onAcceptCallTap,
     this.onDeclineCallTap,
     this.onMicrophoneTap,
@@ -24,20 +23,12 @@ class StreamIncomingCallContent extends StatefulWidget {
     this.singleParticipantTextStyle,
     this.multipleParticipantTextStyle,
     this.callingLabelTextStyle,
-    @Deprecated('Use participantsAvatarWidgetBuilder instead.')
-    this.participantsAvatarBuilder,
     this.participantsAvatarWidgetBuilder,
-    @Deprecated('Use participantsDisplayNameWidgetBuilder instead.')
-    this.participantsDisplayNameBuilder,
     this.participantsDisplayNameWidgetBuilder,
   });
 
   /// Represents a call.
   final Call call;
-
-  /// Holds information about the call.
-  @Deprecated(PartialStateDeprecationMessage.callState)
-  final CallState? callState;
 
   /// The action to perform when the accept call button is tapped.
   final VoidCallback? onAcceptCallTap;
@@ -67,24 +58,12 @@ class StreamIncomingCallContent extends StatefulWidget {
   final TextStyle? callingLabelTextStyle;
 
   /// Builder used to create a custom widget for participants avatars.
-  ///
-  /// Recommend to use [participantsAvatarWidgetBuilder] and listen to the partialState of the call.
-  @Deprecated('Use participantsAvatarWidgetBuilder instead.')
-  final ParticipantsAvatarBuilder? participantsAvatarBuilder;
-
-  /// Builder used to create a custom widget for participants avatars.
   final CallWidgetBuilderWithData<ParticipantsData>?
-      participantsAvatarWidgetBuilder;
-
-  /// Builder used to create a custom widget for participants display names.
-  ///
-  /// Recommend to use [participantsDisplayNameWidgetBuilder] and listen to the partialState of the call.
-  @Deprecated('Use participantsDisplayNameWidgetBuilder instead.')
-  final ParticipantsDisplayNameBuilder? participantsDisplayNameBuilder;
+  participantsAvatarWidgetBuilder;
 
   /// Builder used to create a custom widget for participants display names.
   final CallWidgetBuilderWithData<ParticipantsData>?
-      participantsDisplayNameWidgetBuilder;
+  participantsDisplayNameWidgetBuilder;
 
   @override
   State<StreamIncomingCallContent> createState() =>
@@ -98,91 +77,73 @@ class _StreamIncomingCallContentState extends State<StreamIncomingCallContent> {
   Widget build(BuildContext context) {
     final theme = StreamIncomingOutgoingCallTheme.incomingCallThemeOf(context);
 
-    final singleParticipantAvatarTheme = widget.singleParticipantAvatarTheme ??
+    final singleParticipantAvatarTheme =
+        widget.singleParticipantAvatarTheme ??
         theme.singleParticipantAvatarTheme;
     final multipleParticipantAvatarTheme =
         widget.multipleParticipantAvatarTheme ??
-            theme.multipleParticipantAvatarTheme;
+        theme.multipleParticipantAvatarTheme;
     final singleParticipantTextStyle =
         widget.singleParticipantTextStyle ?? theme.singleParticipantTextStyle;
-    final multipleParticipantTextStyle = widget.multipleParticipantTextStyle ??
+    final multipleParticipantTextStyle =
+        widget.multipleParticipantTextStyle ??
         theme.multipleParticipantTextStyle;
     final callingLabelTextStyle =
         widget.callingLabelTextStyle ?? theme.callingLabelTextStyle;
 
     Widget buildContent(List<UserInfo> users) => CallBackground(
-          participants: users,
-          child: Material(
-            color: Colors.transparent,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Spacer(),
-                widget.participantsAvatarWidgetBuilder?.call(
-                      context,
-                      widget.call,
-                      ParticipantsData(participants: users),
-                    ) ??
-                    widget.participantsAvatarBuilder?.call(
-                      context,
-                      widget.call,
-                      widget.callState ?? widget.call.state.value,
-                      users,
-                    ) ??
-                    ParticipantAvatars(
-                      participants: users,
-                      singleParticipantAvatarTheme:
-                          singleParticipantAvatarTheme,
-                      multipleParticipantAvatarTheme:
-                          multipleParticipantAvatarTheme,
-                    ),
-                widget.participantsDisplayNameWidgetBuilder?.call(
-                      context,
-                      widget.call,
-                      ParticipantsData(participants: users),
-                    ) ??
-                    widget.participantsDisplayNameBuilder?.call(
-                      context,
-                      widget.call,
-                      widget.callState ?? widget.call.state.value,
-                      users,
-                    ) ??
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 64,
-                        vertical: 32,
-                      ),
-                      child: CallingParticipants(
-                        participants: users,
-                        singleParticipantTextStyle: singleParticipantTextStyle,
-                        multipleParticipantTextStyle:
-                            multipleParticipantTextStyle,
-                      ),
-                    ),
-                Text(
-                  // TODO hardcoded text
-                  'Incoming Call...',
-                  style: callingLabelTextStyle,
+      participants: users,
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Spacer(),
+            widget.participantsAvatarWidgetBuilder?.call(
+                  context,
+                  widget.call,
+                  ParticipantsData(participants: users),
+                ) ??
+                ParticipantAvatars(
+                  participants: users,
+                  singleParticipantAvatarTheme: singleParticipantAvatarTheme,
+                  multipleParticipantAvatarTheme:
+                      multipleParticipantAvatarTheme,
                 ),
-                const Spacer(),
-                IncomingCallControls(
-                  isMicrophoneEnabled: connectOptions.microphone.isEnabled,
-                  isCameraEnabled: connectOptions.camera.isEnabled,
-                  onAcceptCallTap: _onAcceptCallTap,
-                  onDeclineCallTap: () => _onDeclineCallTap(context),
-                  onMicrophoneTap: () => _onMicrophoneTap(context),
-                  onCameraTap: () => _onCameraTap(context),
+            widget.participantsDisplayNameWidgetBuilder?.call(
+                  context,
+                  widget.call,
+                  ParticipantsData(participants: users),
+                ) ??
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 64,
+                    vertical: 32,
+                  ),
+                  child: CallingParticipants(
+                    participants: users,
+                    singleParticipantTextStyle: singleParticipantTextStyle,
+                    multipleParticipantTextStyle: multipleParticipantTextStyle,
+                  ),
                 ),
-              ],
+            Text(
+              // TODO hardcoded text
+              'Incoming Call...',
+              style: callingLabelTextStyle,
             ),
-          ),
-        );
-
-    if (widget.callState != null) {
-      return buildContent(
-        widget.callState!.ringingMembers.map((e) => e.toUserInfo()).toList(),
-      );
-    }
+            const Spacer(),
+            IncomingCallControls(
+              isMicrophoneEnabled: connectOptions.microphone.isEnabled,
+              isCameraEnabled: connectOptions.camera.isEnabled,
+              onAcceptCallTap: _onAcceptCallTap,
+              onDeclineCallTap: () => _onDeclineCallTap(context),
+              onMicrophoneTap: () => _onMicrophoneTap(context),
+              onCameraTap: () => _onCameraTap(context),
+            ),
+          ],
+        ),
+      ),
+    );
 
     return PartialCallStateBuilder(
       call: widget.call,

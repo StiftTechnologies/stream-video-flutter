@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart'
     as ln;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:rxdart/rxdart.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart';
 
 import 'core/auth_repository.dart';
@@ -22,11 +23,9 @@ Future<void> _onFirebaseBackgroundMessage(RemoteMessage message) async {
   debugPrint(
     '[onFirebaseBackgroundMessage] message: ${jsonEncode(message.toMap())}',
   );
+
   // Initialise Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await initNotifications();
-
-  // Initialise Stream Video
 
   final authRepository = await AuthRepository.getInstance();
   final credentials = authRepository.getCredentials();
@@ -38,51 +37,13 @@ Future<void> _onFirebaseBackgroundMessage(RemoteMessage message) async {
     userToken: credentials.token,
   );
 
-  client.observeCallDeclinedCallKitEvent();
+  final subscription = client.observeCoreRingingEventsForBackground();
 
-  await _handlePushNotification(message);
+  client.disposeAfterResolvingRinging(
+    disposingCallback: subscription.cancel,
+  );
 
-  await StreamVideo.reset(disconnect: true);
-}
-
-Future<bool> _handlePushNotification(RemoteMessage message) async {
-  try {
-    final payload = message.data;
-    // Only handle messages from stream.video
-    final sender = payload['sender'] as String?;
-    if (sender != 'stream.video') {
-      debugPrint('Not a stream.video message');
-      return false;
-    }
-
-    // Only handle ringing calls.
-    final type = payload['type'] as String?;
-    if (type != 'call.ring' && type != 'call.missed') {
-      debugPrint('Not a call.ring or call.missed message');
-      return false;
-    }
-
-    // Return if the payload does not contain a call cid.
-    final callCid = payload['call_cid'] as String?;
-    if (callCid == null) {
-      debugPrint('No call cid in payload');
-      return false;
-    }
-
-    final createdByDisplayName = payload['created_by_display_name'] as String?;
-    if (createdByDisplayName == null) {
-      debugPrint('No created_by_display_name in payload');
-      return false;
-    }
-
-    await showNotification(callCid, type, createdByDisplayName);
-    return true;
-  } catch (e, stk) {
-    debugPrint('Error handling remote message: $e');
-    debugPrint(stk.toString());
-
-    return false;
-  }
+  await client.handleRingingFlowNotifications(message.data);
 }
 
 final ln.FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -98,8 +59,9 @@ const androidPlatformChannelSpecifics = ln.AndroidNotificationDetails(
 );
 
 Future<void> initNotifications() async {
-  const initializationSettingsAndroid =
-      ln.AndroidInitializationSettings('@mipmap/ic_launcher');
+  const initializationSettingsAndroid = ln.AndroidInitializationSettings(
+    '@mipmap/ic_launcher',
+  );
 
   const initializationSettings = ln.InitializationSettings(
     android: initializationSettingsAndroid,
@@ -113,8 +75,9 @@ Future<void> showNotification(
   String? type,
   String? fromUser,
 ) async {
-  const platformChannelSpecifics =
-      ln.NotificationDetails(android: androidPlatformChannelSpecifics);
+  const platformChannelSpecifics = ln.NotificationDetails(
+    android: androidPlatformChannelSpecifics,
+  );
 
   final notificationId = Object.hash(callCid, type);
 
@@ -149,33 +112,57 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  final navigatorKey = GlobalKey<NavigatorState>();
+
   @override
   void initState() {
     super.initState();
-
-    _observeFcmMessages();
   }
 
   @override
   void dispose() {
-    _fcmSubscription?.cancel();
+    _compositeSubscription.clear();
     super.dispose();
   }
 
-  StreamSubscription<RemoteMessage>? _fcmSubscription;
+  final _compositeSubscription = CompositeSubscription();
 
-  Future<void> _observeFcmMessages() async {
-    // Requests notification permission.
-    await FirebaseMessaging.instance.requestPermission();
+  void _observeRingingEvents() {
+    _compositeSubscription.clear();
 
-    FirebaseMessaging.onBackgroundMessage(_onFirebaseBackgroundMessage);
-    _fcmSubscription =
-        FirebaseMessaging.onMessage.listen(_onFirebaseForegroundMessage);
+    // On mobile we depend on call kit notifications.
+    // On desktop and web they are (currently) not available, so we depend on a
+    // websocket which can receive a call when the app is open.
+    if (CurrentPlatform.isMobile) {
+      _compositeSubscription.add(
+        StreamVideo.instance.observeCoreRingingEvents(
+          onCallAccepted: _navigateToCall,
+        ),
+      );
+    } else {
+      _compositeSubscription.add(
+        StreamVideo.instance.state.incomingCall.listen((call) {
+          if (call == null) return;
+
+          // Navigate to the call screen.
+          _navigateToCall(call);
+        }),
+      );
+    }
   }
 
-  Future<bool> _onFirebaseForegroundMessage(RemoteMessage message) async {
-    debugPrint('[onFirebaseForegroundMessage] message: ${message.toMap()}');
-    return _handlePushNotification(message);
+  void _observeFcmMessages() {
+    FirebaseMessaging.onBackgroundMessage(_onFirebaseBackgroundMessage);
+  }
+
+  void _navigateToCall(Call call) {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute<dynamic>(
+        builder: (context) => StreamCallContainer(
+          call: call,
+        ),
+      ),
+    );
   }
 
   @override
@@ -185,6 +172,7 @@ class _MyAppState extends State<MyApp> {
 
     return MaterialApp(
       title: 'Stream Video Example',
+      navigatorKey: navigatorKey,
       theme: ThemeData(
         textTheme: GoogleFonts.robotoMonoTextTheme(),
         extensions: <ThemeExtension<dynamic>>[lightAppTheme],
@@ -194,7 +182,16 @@ class _MyAppState extends State<MyApp> {
         extensions: <ThemeExtension<dynamic>>[darkAppTheme],
       ),
       themeMode: ThemeMode.dark,
-      home: LoginScreen(connectUser: widget.connectUser),
+      home: LoginScreen(
+        connectUser: (user) async {
+          await widget.connectUser(user);
+
+          _observeRingingEvents();
+          _observeFcmMessages();
+
+          return const Result.success(none);
+        },
+      ),
       debugShowCheckedModeBanner: false,
     );
   }

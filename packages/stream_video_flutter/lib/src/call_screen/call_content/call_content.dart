@@ -8,35 +8,35 @@ import 'package:flutter/material.dart';
 import '../../../stream_video_flutter.dart';
 import '../call_diagnostics_content/call_diagnostics_content.dart';
 
-/// Builder used to create a custom call app bar.
-///
-/// Replaced by the simplified [CallPreferredSizeWidgetBuilder].
-@Deprecated('Use CallPreferredSizeWidgetBuilder instead.')
-typedef CallAppBarBuilder = PreferredSizeWidget? Function(
-  BuildContext context,
-  Call call,
-  CallState callState,
-);
+typedef CallNotConnectedBuilder =
+    Widget Function(
+      BuildContext context,
+      CallNotConnectedProperties properties,
+    );
 
-/// Builder used to create a custom call participants widget.
-///
-/// Replaced by the simplified [CallWidgetBuilder].
-@Deprecated('Use CallWidgetBuilder instead.')
-typedef CallParticipantsBuilder = Widget Function(
-  BuildContext context,
-  Call call,
-  CallState callState,
-);
+typedef CallFastReconnectingOverlayBuilder =
+    Widget Function(
+      BuildContext context,
+      CallFastReconnectingProperties properties,
+    );
 
-/// Builder used to create a custom call controls widget.
-///
-/// Replaced by the simplified [CallWidgetBuilder].
-@Deprecated('Use CallWidgetBuilder instead.')
-typedef CallControlsBuilder = Widget Function(
-  BuildContext context,
-  Call call,
-  CallState callState,
-);
+class CallNotConnectedProperties {
+  CallNotConnectedProperties(
+    this.call, {
+    required this.isMigrating,
+    required this.isReconnecting,
+  });
+
+  final Call call;
+  final bool isMigrating;
+  final bool isReconnecting;
+}
+
+class CallFastReconnectingProperties {
+  CallFastReconnectingProperties(this.call);
+
+  final Call call;
+}
 
 /// Represents the UI in an active call that shows participants and their video,
 /// as well as some extra UI features to control the call settings, browse
@@ -46,17 +46,13 @@ class StreamCallContent extends StatefulWidget {
   const StreamCallContent({
     super.key,
     required this.call,
-    @Deprecated(PartialStateDeprecationMessage.callState) this.callState,
     this.onBackPressed,
     this.onLeaveCallTap,
-    @Deprecated('Use callAppBarWidgetBuilder instead.') this.callAppBarBuilder,
     this.callAppBarWidgetBuilder,
-    @Deprecated('Use callParticipantsWidgetBuilder instead.')
-    this.callParticipantsBuilder,
     this.callParticipantsWidgetBuilder,
-    @Deprecated('Use callControlsWidgetBuilder instead.')
-    this.callControlsBuilder,
     this.callControlsWidgetBuilder,
+    this.callNotConnectedBuilder,
+    this.callFastReconnectingOverlayBuilder,
     this.layoutMode = ParticipantLayoutMode.grid,
     this.extendBody = false,
     this.pictureInPictureConfiguration = const PictureInPictureConfiguration(),
@@ -65,15 +61,6 @@ class StreamCallContent extends StatefulWidget {
   /// Represents a call.
   final Call call;
 
-  /// Holds information about the call.
-  @Deprecated(
-    """
-It's no longer recommended to provide `callState`.
-The widget can listen to more focussed partial state updates itself from the `call` object.
-""",
-  )
-  final CallState? callState;
-
   /// The action to perform when the back button is pressed.
   final VoidCallback? onBackPressed;
 
@@ -81,25 +68,19 @@ The widget can listen to more focussed partial state updates itself from the `ca
   final VoidCallback? onLeaveCallTap;
 
   /// Builder used to create a custom call app bar.
-  @Deprecated('Use callAppBarWidgetBuilder instead.')
-  final CallAppBarBuilder? callAppBarBuilder;
-
-  /// Builder used to create a custom call app bar.
   final CallPreferredSizeWidgetBuilder? callAppBarWidgetBuilder;
-
-  /// Builder used to create a custom participants grid.
-  @Deprecated('Use callParticipantsWidgetBuilder instead.')
-  final CallParticipantsBuilder? callParticipantsBuilder;
 
   /// Builder used to create a custom participants grid.
   final CallWidgetBuilder? callParticipantsWidgetBuilder;
 
   /// Builder used to create a custom call controls panel.
-  @Deprecated('Use callControlsWidgetBuilder instead.')
-  final CallControlsBuilder? callControlsBuilder;
-
-  /// Builder used to create a custom call controls panel.
   final CallWidgetBuilder? callControlsWidgetBuilder;
+
+  /// Builder used to create a custom widget when the call is not connected.
+  final CallNotConnectedBuilder? callNotConnectedBuilder;
+
+  /// Builder used to create a custom widget when the call is fast reconnecting.
+  final CallFastReconnectingOverlayBuilder? callFastReconnectingOverlayBuilder;
 
   /// The layout mode used to display the participants.
   final ParticipantLayoutMode layoutMode;
@@ -121,13 +102,11 @@ class _StreamCallContentState extends State<StreamCallContent> {
   /// Represents a call.
   Call get call => widget.call;
 
-  /// Holds information about the call.
-  CallState? get _callState => widget.callState;
   late bool _isScreenShareEnabled;
   late CallStatus _status;
 
   StreamSubscription<({CallStatus status, bool isScreenShareEnabled})>?
-      _callStateSubscription;
+  _callStateSubscription;
 
   /// Controls the visibility of [CallDiagnosticsContent].
   bool _isStatsVisible = false;
@@ -142,17 +121,7 @@ class _StreamCallContentState extends State<StreamCallContent> {
   void didUpdateWidget(covariant StreamCallContent oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    //If the widget has a callState we expect that state to be updated when needed.
-    if (_callState != oldWidget.callState && _callState != null) {
-      _callStateSubscription?.cancel();
-      _updateCallState(
-        (
-          status: widget.callState!.status,
-          isScreenShareEnabled:
-              widget.callState!.localParticipant?.isScreenShareEnabled ?? false
-        ),
-      );
-    } else if (widget.call != oldWidget.call) {
+    if (widget.call != oldWidget.call) {
       _callStateSubscription?.cancel();
       _startListeningToCallState();
     }
@@ -165,22 +134,17 @@ class _StreamCallContentState extends State<StreamCallContent> {
   }
 
   void _startListeningToCallState() {
-    final callState = _callState ?? call.state.value;
+    final callState = call.state.value;
     _status = callState.status;
     _isScreenShareEnabled =
         callState.localParticipant?.isScreenShareEnabled ?? false;
-
-    //If the widget has a callState we expect that state to be updated when needed.
-    if (_callState != null) {
-      return;
-    }
 
     _callStateSubscription = call
         .partialState(
           (state) => (
             status: state.status,
             isScreenShareEnabled:
-                state.localParticipant?.isScreenShareEnabled ?? false
+                state.localParticipant?.isScreenShareEnabled ?? false,
           ),
         )
         .listen(_updateCallState);
@@ -200,9 +164,10 @@ class _StreamCallContentState extends State<StreamCallContent> {
     final theme = StreamVideoTheme.of(context);
     final pipEnabled =
         widget.pictureInPictureConfiguration.enablePictureInPicture &&
-            (!widget.pictureInPictureConfiguration
-                    .disablePictureInPictureWhenScreenSharing ||
-                !_isScreenShareEnabled);
+        (!widget
+                .pictureInPictureConfiguration
+                .disablePictureInPictureWhenScreenSharing ||
+            !_isScreenShareEnabled);
 
     final Widget bodyWidget;
     if (_status.isConnected ||
@@ -216,9 +181,8 @@ class _StreamCallContentState extends State<StreamCallContent> {
               width: 300,
               child: StreamPictureInPictureUiKitView(
                 call: call,
-                configuration:
-                    widget.pictureInPictureConfiguration.iOSPiPConfiguration,
-                participantSort: widget.pictureInPictureConfiguration.sort,
+                pictureInPictureConfiguration:
+                    widget.pictureInPictureConfiguration,
               ),
             ),
           if (CurrentPlatform.isAndroid && pipEnabled)
@@ -227,11 +191,6 @@ class _StreamCallContentState extends State<StreamCallContent> {
               configuration: widget.pictureInPictureConfiguration,
             ),
           widget.callParticipantsWidgetBuilder?.call(context, call) ??
-              widget.callParticipantsBuilder?.call(
-                context,
-                call,
-                _callState ?? call.state.value,
-              ) ??
               StreamCallParticipants(
                 call: call,
                 layoutMode: widget.layoutMode,
@@ -240,20 +199,27 @@ class _StreamCallContentState extends State<StreamCallContent> {
       );
     } else {
       final isReconnecting = _status.isReconnecting;
-      final statusText = isReconnecting ? 'Reconnecting' : 'Connecting';
-      bodyWidget = Center(
-        child: Text(
-          statusText,
-          style: theme.textTheme.title3,
-        ),
-      );
+      bodyWidget =
+          widget.callNotConnectedBuilder?.call(
+            context,
+            CallNotConnectedProperties(
+              call,
+              isMigrating: _status.isMigrating,
+              isReconnecting: isReconnecting,
+            ),
+          ) ??
+          Center(
+            child: Text(
+              isReconnecting ? 'Reconnecting' : 'Connecting',
+              style: theme.textTheme.title3,
+            ),
+          );
     }
 
     return Scaffold(
       backgroundColor: theme.callContentTheme.callContentBackgroundColor,
-      appBar: widget.callAppBarWidgetBuilder?.call(context, call) ??
-          widget.callAppBarBuilder
-              ?.call(context, call, _callState ?? call.state.value) ??
+      appBar:
+          widget.callAppBarWidgetBuilder?.call(context, call) ??
           CallAppBar(
             call: call,
             onBackPressed: widget.onBackPressed,
@@ -273,18 +239,22 @@ class _StreamCallContentState extends State<StreamCallContent> {
             ),
           ),
           if (_status.isFastReconnecting)
-            const Positioned(
-              top: 25,
-              left: 25,
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
+            widget.callFastReconnectingOverlayBuilder?.call(
+                  context,
+                  CallFastReconnectingProperties(call),
+                ) ??
+                const Positioned(
+                  top: 25,
+                  left: 25,
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  ),
                 ),
-              ),
-            ),
         ],
       ),
       extendBody: widget.extendBody,
@@ -293,11 +263,9 @@ class _StreamCallContentState extends State<StreamCallContent> {
         selector: (state) => state.localParticipant,
         builder: (_, localParticipant) => localParticipant != null
             ? widget.callControlsWidgetBuilder?.call(context, call) ??
-                widget.callControlsBuilder
-                    ?.call(context, call, _callState ?? call.state.value) ??
-                StreamCallControls.withDefaultOptions(
-                  call: call,
-                )
+                  StreamCallControls.withDefaultOptions(
+                    call: call,
+                  )
             : const SizedBox.shrink(),
       ),
     );

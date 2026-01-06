@@ -17,10 +17,12 @@ mixin StateCoordinatorMixin on StateNotifier<CallState> {
   void callMetadataChanged(
     CallMetadata callMetadata, {
     Map<String, List<String>>? capabilitiesByRole,
+    bool updateMembers = true,
   }) {
     state = state.copyFromMetadata(
       callMetadata,
       capabilitiesByRole: capabilitiesByRole,
+      updateMembers: updateMembers,
     );
   }
 
@@ -91,7 +93,8 @@ mixin StateCoordinatorMixin on StateNotifier<CallState> {
     }).toList();
 
     if (state.createdByMe) {
-      final everyoneElseRejected = state.otherParticipants.isEmpty &&
+      final everyoneElseRejected =
+          state.otherParticipants.isEmpty &&
           state.callMembers
               .where((m) => m.userId != state.currentUserId)
               .every((m) => rejectedBy.keys.contains(m.userId));
@@ -478,8 +481,9 @@ mixin StateCoordinatorMixin on StateNotifier<CallState> {
   }) {
     state = state.copyWith(
       callMembers: state.callMembers.map((member) {
-        final updatedMember =
-            members.firstWhereOrNull((m) => m.userId == member.userId);
+        final updatedMember = members.firstWhereOrNull(
+          (m) => m.userId == member.userId,
+        );
         if (updatedMember != null) {
           return member.copyWith(
             roles: updatedMember.roles,

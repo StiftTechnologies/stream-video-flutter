@@ -15,7 +15,7 @@ android {
         namespace = "io.getstream.video.flutter.stream_video_push_notification"
     }
 
-    compileSdk = 34
+    compileSdk = flutter.compileSdkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -33,11 +33,17 @@ android {
 
     defaultConfig {
         minSdk = 21
+        consumerProguardFiles 'consumer-rules.pro'
     }
 
     dependencies {
-        testImplementation("org.jetbrains.kotlin:kotlin-test")
-        testImplementation("org.mockito:mockito-core:5.0.0")
+        implementation 'androidx.core:core-ktx:1.17.0'
+        implementation 'androidx.appcompat:appcompat:1.7.0'
+        implementation 'de.hdodenhof:circleimageview:3.1.0'
+        implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
+        implementation 'com.fasterxml.jackson.core:jackson-core:2.20.0'
+        implementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0'
+        implementation "io.coil-kt:coil:1.4.0"
     }
 
     testOptions {

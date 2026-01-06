@@ -8,8 +8,10 @@ import 'package:meta/meta.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart' as rtc;
+import 'package:system_info2/system_info2.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../protobuf/video/sfu/models/models.pb.dart' as sfu_models;
 import '../globals.dart';
 import '../open_api/video/coordinator/api.dart' hide User;
 import 'audio_processing/audio_processor.dart';
@@ -31,7 +33,8 @@ import 'latency/latency_service.dart';
 import 'latency/latency_settings.dart';
 import 'lifecycle/lifecycle_state.dart';
 import 'lifecycle/lifecycle_utils.dart'
-    if (dart.library.io) 'lifecycle/lifecycle_utils_io.dart' as lifecycle;
+    if (dart.library.io) 'lifecycle/lifecycle_utils_io.dart'
+    as lifecycle;
 import 'logger/impl/console_logger.dart';
 import 'logger/impl/external_logger.dart';
 import 'logger/impl/tagged_logger.dart';
@@ -41,6 +44,7 @@ import 'models/call_cid.dart';
 import 'models/call_preferences.dart';
 import 'models/call_received_data.dart';
 import 'models/call_ringing_data.dart';
+import 'models/call_status.dart';
 import 'models/guest_created_data.dart';
 import 'models/push_device.dart';
 import 'models/push_provider.dart';
@@ -59,6 +63,7 @@ import 'utils/none.dart';
 import 'utils/result.dart';
 import 'utils/standard.dart';
 import 'utils/subscriptions.dart';
+import 'webrtc/rtc_manager.dart';
 import 'webrtc/sdp/policy/sdp_policy.dart';
 
 const _tag = 'SV:Client';
@@ -70,13 +75,14 @@ const _defaultCoordinatorRpcUrl = 'https://video.stream-io-api.com';
 const _defaultCoordinatorWsUrl = 'wss://video.stream-io-api.com/video/connect';
 
 /// Handler function used for logging.
-typedef LogHandlerFunction = void Function(
-  Priority priority,
-  String tag,
-  MessageBuilder message, [
-  Object? error,
-  StackTrace? stk,
-]);
+typedef LogHandlerFunction =
+    void Function(
+      Priority priority,
+      String tag,
+      MessageBuilder message, [
+      Object? error,
+      StackTrace? stk,
+    ]);
 
 /// The client responsible for handling config and maintaining calls
 class StreamVideo extends Disposable {
@@ -122,6 +128,7 @@ class StreamVideo extends Disposable {
     TokenLoader? tokenLoader,
     OnTokenUpdated? onTokenUpdated,
     PNManagerProvider? pushNotificationManagerProvider,
+    bool precacheGenericSdps = true,
   }) {
     final instance = StreamVideo._(
       apiKey,
@@ -131,6 +138,7 @@ class StreamVideo extends Disposable {
       tokenLoader: tokenLoader,
       onTokenUpdated: onTokenUpdated,
       pushNotificationManagerProvider: pushNotificationManagerProvider,
+      precacheGenericSdps: precacheGenericSdps,
     );
     return instance;
   }
@@ -143,21 +151,22 @@ class StreamVideo extends Disposable {
     TokenLoader? tokenLoader,
     OnTokenUpdated? onTokenUpdated,
     PNManagerProvider? pushNotificationManagerProvider,
-  })  : _options = options,
-        _state = MutableClientState(user, options) {
+    bool precacheGenericSdps = true,
+  }) : _options = options,
+       _state = MutableClientState(user, options) {
     _networkMonitor =
         _options.networkMonitorSettings.internetConnectionInstance ??
-            InternetConnection.createInstance(
-              checkInterval: _options.networkMonitorSettings.checkInterval,
-              useDefaultOptions:
-                  _options.networkMonitorSettings.customEndpoints.isEmpty,
-              customCheckOptions:
-                  _options.networkMonitorSettings.customEndpoints.isEmpty
-                      ? null
-                      : _options.networkMonitorSettings.customEndpoints
-                          .map((option) => option.toInternetCheckOption())
-                          .toList(),
-            );
+        InternetConnection.createInstance(
+          checkInterval: _options.networkMonitorSettings.checkInterval,
+          useDefaultOptions:
+              _options.networkMonitorSettings.customEndpoints.isEmpty,
+          customCheckOptions:
+              _options.networkMonitorSettings.customEndpoints.isEmpty
+              ? null
+              : _options.networkMonitorSettings.customEndpoints
+                    .map((option) => option.toInternetCheckOption())
+                    .toList(),
+        );
 
     _client = buildCoordinatorClient(
       user: user,
@@ -171,8 +180,10 @@ class StreamVideo extends Disposable {
     );
 
     // Initialize the push notification manager if the provider is provided.
-    pushNotificationManager =
-        pushNotificationManagerProvider?.call(_client, this);
+    pushNotificationManager = pushNotificationManagerProvider?.call(
+      _client,
+      this,
+    );
 
     _state.user.value = user;
 
@@ -182,8 +193,8 @@ class StreamVideo extends Disposable {
           options: {
             if (CurrentPlatform.isAndroid &&
                 options.androidAudioConfiguration != null)
-              'androidAudioConfiguration':
-                  options.androidAudioConfiguration!.toMap(),
+              'androidAudioConfiguration': options.androidAudioConfiguration!
+                  .toMap(),
           },
         ),
       );
@@ -191,29 +202,29 @@ class StreamVideo extends Disposable {
 
     final tokenProvider = switch (user.type) {
       UserType.authenticated => TokenProvider.from(
-          userToken?.let(UserToken.jwt),
-          tokenLoader,
-          onTokenUpdated,
-        ),
+        userToken?.let(UserToken.jwt),
+        tokenLoader,
+        onTokenUpdated,
+      ),
       UserType.anonymous => TokenProvider.static(
-          UserToken.anonymous(),
-          onTokenUpdated: onTokenUpdated,
-        ),
+        UserToken.anonymous(),
+        onTokenUpdated: onTokenUpdated,
+      ),
       UserType.guest => TokenProvider.dynamic(
-          (userId) async {
-            final result = await _client.loadGuest(id: userId);
-            if (result is! Success<GuestCreatedData>) {
-              throw (result as Failure).error;
-            }
-            final updatedUser = result.data.user;
-            _state.user.value = User(
-              type: user.type,
-              info: updatedUser.toUserInfo(),
-            );
-            return result.data.accessToken;
-          },
-          onTokenUpdated: onTokenUpdated,
-        ),
+        (userId) async {
+          final result = await _client.loadGuest(id: userId);
+          if (result is! Success<GuestCreatedData>) {
+            throw (result as Failure).error;
+          }
+          final updatedUser = result.data.user;
+          _state.user.value = User(
+            type: user.type,
+            info: updatedUser.toUserInfo(),
+          );
+          return result.data.accessToken;
+        },
+        onTokenUpdated: onTokenUpdated,
+      ),
     };
 
     _tokenManager.setTokenProvider(
@@ -222,13 +233,36 @@ class StreamVideo extends Disposable {
     );
 
     _setupLogger(options.logPriority, options.logHandlerFunction);
-    unawaited(_setClientVersionDetails());
+
+    unawaited(
+      _setClientDetails().onError((dynamic error, StackTrace stackTrace) {
+        _logger.e(
+          () =>
+              '[StreamVideo] failed to set client details: $error with stackTrace: $stackTrace',
+        );
+
+        return null;
+      }),
+    );
+
+    if (precacheGenericSdps) {
+      unawaited(RtcManager.cacheGenericSdp());
+    }
 
     if (options.autoConnect) {
       unawaited(
         connect(
           includeUserDetails: options.includeUserDetailsForAutoConnect,
-        ),
+        ).onError((dynamic error, StackTrace stackTrace) {
+          _logger.e(
+            () =>
+                '[StreamVideo] failed to auto connect: $error with stackTrace: $stackTrace',
+          );
+
+          return Result.error(
+            'Failed to auto connect: $error',
+          );
+        }),
       );
     }
   }
@@ -260,11 +294,6 @@ class StreamVideo extends Disposable {
   final StreamVideoOptions _options;
   final String apiKey;
 
-  @Deprecated('Use options.muteVideoWhenInBackground instead')
-  bool get muteVideoWhenInBackground => _options.muteVideoWhenInBackground;
-  @Deprecated('Use options.muteAudioWhenInBackground instead')
-  bool get muteAudioWhenInBackground => _options.muteAudioWhenInBackground;
-
   final MutableClientState _state;
 
   StreamVideoOptions get options => _options;
@@ -278,6 +307,7 @@ class StreamVideo extends Disposable {
 
   final Map<String, bool> _mutedCameraByStateChange = {};
   final Map<String, bool> _mutedAudioByStateChange = {};
+  final Map<String, Timer> _incomingAutoRejectTimers = {};
 
   /// Returns the current user.
   UserInfo get currentUser => _state.currentUser.info;
@@ -339,10 +369,12 @@ class StreamVideo extends Disposable {
 
     return _connectOperation!
         .valueOrDefault(Result.error('connect was cancelled'))
-        .whenComplete(() {
-      _logger.i(() => '[connect] clear shared operation');
-      _connectOperation = null;
-    });
+        .whenComplete(
+          () {
+            _logger.i(() => '[connect] clear shared operation');
+            _connectOperation = null;
+          },
+        );
   }
 
   /// Disconnects the user from the Stream Video service.
@@ -351,9 +383,9 @@ class StreamVideo extends Disposable {
     return _disconnectOperation!
         .valueOrDefault(Result.error('disconnect was cancelled'))
         .whenComplete(() {
-      _logger.i(() => '[disconnect] clear shared operation');
-      _disconnectOperation = null;
-    });
+          _logger.i(() => '[disconnect] clear shared operation');
+          _disconnectOperation = null;
+        });
   }
 
   Future<Result<UserToken>> _connect({
@@ -453,6 +485,11 @@ class StreamVideo extends Disposable {
     if (!_connectionState.isDisconnected) {
       await _client.disconnectUser();
     }
+
+    for (final timer in _incomingAutoRejectTimers.values) {
+      timer.cancel();
+    }
+    _incomingAutoRejectTimers.clear();
 
     _subscriptions.cancelAll();
     await pushNotificationManager?.dispose();
@@ -656,7 +693,8 @@ class StreamVideo extends Disposable {
     bool? voipToken,
   }) {
     _logger.d(
-      () => '[addDevice] pushProvider: $pushProvider'
+      () =>
+          '[addDevice] pushProvider: $pushProvider'
           ', pushToken: $pushToken, pushProviderName: $pushProviderName'
           ', voipToken: $voipToken',
     );
@@ -690,29 +728,36 @@ class StreamVideo extends Disposable {
     return result;
   }
 
-  StreamSubscription<T>? onCallKitEvent<T extends CallKitEvent>(
+  StreamSubscription<T>? onRingingEvent<T extends RingingEvent>(
     void Function(T event)? onEvent,
   ) {
     final manager = pushNotificationManager;
     if (manager == null) {
-      _logger.e(() => '[onCallKitEvent] rejected (no manager)');
+      _logger.e(() => '[onRingingEvent] rejected (no manager)');
       return null;
     }
 
     return manager.on<T>(onEvent);
   }
 
-  StreamSubscription<CallKitEvent>? disposeAfterResolvingRinging({
+  /// This method is used to dispose the StreamVideo instance after the ringing event is resolved.
+  /// It is used primarily for Firebase Messaging background handler where separate isolate is used to handle the message.
+  ///
+  /// [disposingCallback] is a callback that allows to perform any additional disposing operations after the ringing event is resolved.
+  StreamSubscription<RingingEvent>? disposeAfterResolvingRinging({
     void Function()? disposingCallback,
   }) {
-    return onCallKitEvent(
+    return onRingingEvent(
       (event) {
         if (event is ActionCallAccept ||
             event is ActionCallDecline ||
             event is ActionCallTimeout ||
             event is ActionCallEnded) {
-          disposingCallback?.call();
-          dispose();
+          // Delay the callback to ensure the call is fully resolved.
+          Future<void>.delayed(const Duration(seconds: 1), () {
+            disposingCallback?.call();
+            dispose();
+          });
         }
       },
     );
@@ -752,28 +797,65 @@ class StreamVideo extends Disposable {
     return false;
   }
 
+  @Deprecated('Use observeCoreRingingEvents instead.')
   CompositeSubscription observeCoreCallKitEvents({
     void Function(Call)? onCallAccepted,
     CallPreferences? acceptCallPreferences,
   }) {
-    final callKitEventSubscriptions = CompositeSubscription();
-
-    observeCallAcceptCallKitEvent(
+    return observeCoreRingingEvents(
       onCallAccepted: onCallAccepted,
       acceptCallPreferences: acceptCallPreferences,
-    )?.addTo(callKitEventSubscriptions);
-
-    observeCallDeclinedCallKitEvent()?.addTo(callKitEventSubscriptions);
-    observeCallEndedCallKitEvent()?.addTo(callKitEventSubscriptions);
-
-    return callKitEventSubscriptions;
+    );
   }
 
+  /// Helper method to observe core ringing events.
+  /// Should be used as soon as the app is launched when handling incoming calls.
+  CompositeSubscription observeCoreRingingEvents({
+    void Function(Call)? onCallAccepted,
+    CallPreferences? acceptCallPreferences,
+  }) {
+    final ringingEventSubscriptions = CompositeSubscription();
+
+    observeCallIncomingRingingEvent()?.addTo(ringingEventSubscriptions);
+
+    observeCallAcceptRingingEvent(
+      onCallAccepted: onCallAccepted,
+      acceptCallPreferences: acceptCallPreferences,
+    )?.addTo(ringingEventSubscriptions);
+
+    observeCallDeclinedRingingEvent()?.addTo(ringingEventSubscriptions);
+    observeCallEndedRingingEvent()?.addTo(ringingEventSubscriptions);
+
+    return ringingEventSubscriptions;
+  }
+
+  /// Helper method to observe core ringing events for background.
+  /// Should be used in the background handler when handling incoming calls.
+  CompositeSubscription observeCoreRingingEventsForBackground() {
+    final ringingEventSubscriptions = CompositeSubscription();
+
+    observeCallIncomingRingingEvent()?.addTo(ringingEventSubscriptions);
+    observeCallDeclinedRingingEvent()?.addTo(ringingEventSubscriptions);
+
+    return ringingEventSubscriptions;
+  }
+
+  @Deprecated('Use observeCallAcceptRingingEvent instead.')
   StreamSubscription<ActionCallAccept>? observeCallAcceptCallKitEvent({
     void Function(Call)? onCallAccepted,
     CallPreferences? acceptCallPreferences,
   }) {
-    return onCallKitEvent<ActionCallAccept>(
+    return observeCallAcceptRingingEvent(
+      onCallAccepted: onCallAccepted,
+      acceptCallPreferences: acceptCallPreferences,
+    );
+  }
+
+  StreamSubscription<ActionCallAccept>? observeCallAcceptRingingEvent({
+    void Function(Call)? onCallAccepted,
+    CallPreferences? acceptCallPreferences,
+  }) {
+    return onRingingEvent<ActionCallAccept>(
       (event) => _onCallAccept(
         event,
         onCallAccepted: onCallAccepted,
@@ -782,12 +864,26 @@ class StreamVideo extends Disposable {
     );
   }
 
-  StreamSubscription<ActionCallDecline>? observeCallDeclinedCallKitEvent() {
-    return onCallKitEvent<ActionCallDecline>(_onCallDecline);
+  StreamSubscription<ActionCallIncoming>? observeCallIncomingRingingEvent() {
+    return onRingingEvent<ActionCallIncoming>(_onCallIncoming);
   }
 
+  @Deprecated('Use observeCallDeclinedRingingEvent instead.')
+  StreamSubscription<ActionCallDecline>? observeCallDeclinedCallKitEvent() {
+    return observeCallDeclinedRingingEvent();
+  }
+
+  StreamSubscription<ActionCallDecline>? observeCallDeclinedRingingEvent() {
+    return onRingingEvent<ActionCallDecline>(_onCallDecline);
+  }
+
+  @Deprecated('Use observeCallEndedRingingEvent instead.')
   StreamSubscription<ActionCallEnded>? observeCallEndedCallKitEvent() {
-    return onCallKitEvent<ActionCallEnded>(_onCallEnded);
+    return observeCallEndedRingingEvent();
+  }
+
+  StreamSubscription<ActionCallEnded>? observeCallEndedRingingEvent() {
+    return onRingingEvent<ActionCallEnded>(_onCallEnded);
   }
 
   Future<void> _onCallAccept(
@@ -800,6 +896,8 @@ class StreamVideo extends Disposable {
     final uuid = event.data.uuid;
     final cid = event.data.callCid;
     if (uuid == null || cid == null) return;
+
+    _cancelIncomingAutoRejectTimerByCid(cid);
 
     final consumeResult = await consumeIncomingCall(
       uuid: uuid,
@@ -828,12 +926,33 @@ class StreamVideo extends Disposable {
     onCallAccepted?.call(callToJoin);
   }
 
+  Future<void> _onCallIncoming(ActionCallIncoming event) async {
+    _logger.d(() => '[onCallIncoming] event: $event');
+
+    final uuid = event.data.uuid;
+    final cid = event.data.callCid;
+    if (uuid == null || cid == null) return;
+
+    final consumeResult = await consumeIncomingCall(
+      uuid: uuid,
+      cid: cid,
+    );
+
+    final incomingCall = consumeResult.getDataOrNull();
+    if (incomingCall == null) return;
+
+    final timeout = incomingCall.state.value.settings.ring.autoRejectTimeout;
+    _startIncomingAutoRejectTimer(incomingCall, timeout);
+  }
+
   Future<void> _onCallDecline(ActionCallDecline event) async {
     _logger.d(() => '[onCallDecline] event: $event');
 
     final uuid = event.data.uuid;
     final cid = event.data.callCid;
     if (uuid == null || cid == null) return;
+
+    _cancelIncomingAutoRejectTimerByCid(cid);
 
     final call = await consumeIncomingCall(uuid: uuid, cid: cid);
     final callToReject = call.getDataOrNull();
@@ -848,7 +967,7 @@ class StreamVideo extends Disposable {
     }
   }
 
-  /// ActionCallEnded event is sent by `flutter_callkit_incoming` when the call is ended.
+  /// ActionCallEnded event is sent by native side of stream_video_push_notification package when the call is ended.
   /// On iOS this is connected to CallKit and should end active call or reject incoming call.
   /// On Android this is connected to push notification being dismissed.
   /// When app is terminated it can be send even when accepting the call. That's why we only handle it on iOS.
@@ -860,6 +979,8 @@ class StreamVideo extends Disposable {
     final uuid = event.data.uuid;
     final cid = event.data.callCid;
     if (uuid == null || cid == null) return;
+
+    _cancelIncomingAutoRejectTimerByCid(cid);
 
     final activeCall = activeCalls.firstWhereOrNull(
       (call) => call.callCid.value == cid,
@@ -873,20 +994,45 @@ class StreamVideo extends Disposable {
         _logger.d(() => '[onCallEnded] error leaving call: ${result.error}');
       }
     } else if (incomingCall?.callCid.value == cid) {
-      final callResult = await consumeIncomingCall(uuid: uuid, cid: cid);
-      final callToReject = callResult.getDataOrNull();
-      if (callToReject == null) return;
-
-      final result = await callToReject.reject(
-        reason: CallRejectReason.decline(),
-      );
-
-      if (result is Failure) {
-        _logger.d(
-          () => '[onCallEnded] error rejecting incoming call: ${result.error}',
+      final status = incomingCall?.state.value.status;
+      if (status is CallStatusIncoming && !status.acceptedByMe) {
+        final result = await incomingCall?.reject(
+          reason: CallRejectReason.decline(),
         );
+        if (result is Failure) {
+          _logger.d(
+            () =>
+                '[onCallEnded] error rejecting incoming call: ${result.error}',
+          );
+        }
+      } else {
+        _logger.v(() => '[onCallEnded] skip reject (status: $status)');
       }
     }
+  }
+
+  void _startIncomingAutoRejectTimer(Call call, Duration timeout) {
+    if (timeout <= Duration.zero) return;
+    final cid = call.callCid.value;
+
+    _incomingAutoRejectTimers[cid]?.cancel();
+    _incomingAutoRejectTimers[cid] = Timer(timeout, () async {
+      try {
+        final status = call.state.value.status;
+        if (status is CallStatusIncoming && !status.acceptedByMe) {
+          await call.reject(reason: CallRejectReason.timeout());
+        }
+      } catch (e) {
+        _logger.e(() => '[incomingTimeout] failed cid: $cid: $e');
+      } finally {
+        _incomingAutoRejectTimers.remove(cid);
+      }
+    });
+  }
+
+  void _cancelIncomingAutoRejectTimerByCid(String cid) {
+    final timer = _incomingAutoRejectTimers.remove(cid);
+    timer?.cancel();
   }
 
   @Deprecated('Use handleRingingFlowNotifications instead.')
@@ -945,7 +1091,7 @@ class StreamVideo extends Disposable {
         manager.showMissedCall(
           uuid: callUUID,
           handle: createdById,
-          nameCaller: (callDisplayName?.isNotEmpty ?? false)
+          callerName: (callDisplayName?.isNotEmpty ?? false)
               ? callDisplayName
               : createdByName,
           callCid: callCid,
@@ -968,7 +1114,7 @@ class StreamVideo extends Disposable {
           manager.showIncomingCall(
             uuid: callUUID,
             handle: createdById,
-            nameCaller: (callDisplayName?.isNotEmpty ?? false)
+            callerName: (callDisplayName?.isNotEmpty ?? false)
                 ? callDisplayName
                 : createdByName,
             callCid: callCid,
@@ -1003,23 +1149,25 @@ class StreamVideo extends Disposable {
       success: (success) {
         final callData = success.data;
 
-        if (callData.metadata.session.acceptedBy
-            .containsKey(_state.currentUser.id)) {
+        if (callData.metadata.session.acceptedBy.containsKey(
+          _state.currentUser.id,
+        )) {
           _logger.d(() => '[getCallRingingState] call already accepted');
           return CallRingingState.accepted;
         }
 
-        if (callData.metadata.session.rejectedBy
-            .containsKey(_state.currentUser.id)) {
+        if (callData.metadata.session.rejectedBy.containsKey(
+          _state.currentUser.id,
+        )) {
           _logger.d(() => '[getCallRingingState] call already rejected');
           return CallRingingState.rejected;
         }
 
         final otherMembers = callData.metadata.members.keys.toList()
           ..remove(_state.currentUser.id);
-        if (callData.metadata.session.rejectedBy.keys
-            .toSet()
-            .containsAll(otherMembers)) {
+        if (callData.metadata.session.rejectedBy.keys.toSet().containsAll(
+          otherMembers,
+        )) {
           _logger.d(
             () =>
                 '[getCallRingingState] call already rejected by all other members',
@@ -1140,42 +1288,94 @@ void _setupLogger(Priority logPriority, LogHandlerFunction logHandlerFunction) {
   }
 }
 
-Future<String?> _setClientVersionDetails() async {
+Future<String?> _setClientDetails() async {
   try {
     final packageInfo = await PackageInfo.fromPlatform();
 
     final appName = packageInfo.appName;
     final appVersion = packageInfo.version;
 
-    var osVersion = '';
-    var deviceModel = '';
+    sfu_models.Device? device;
+    sfu_models.Browser? browser;
+
+    var os = sfu_models.OS(
+      name: CurrentPlatform.name,
+    );
 
     if (CurrentPlatform.isAndroid) {
       final deviceInfo = await DeviceInfoPlugin().androidInfo;
-      osVersion = deviceInfo.version.release;
-      deviceModel = '${deviceInfo.manufacturer} ${deviceInfo.model}';
+      os = sfu_models.OS(
+        name: CurrentPlatform.name,
+        version: deviceInfo.version.release,
+        architecture: SysInfo.rawKernelArchitecture,
+      );
+      device = sfu_models.Device(
+        name: '${deviceInfo.manufacturer} : ${deviceInfo.model}',
+      );
     } else if (CurrentPlatform.isIos) {
       final deviceInfo = await DeviceInfoPlugin().iosInfo;
-      osVersion = deviceInfo.systemVersion;
-      deviceModel = deviceInfo.utsname.machine;
+      os = sfu_models.OS(
+        name: CurrentPlatform.name,
+        version: deviceInfo.systemVersion,
+      );
+      device = sfu_models.Device(
+        name: deviceInfo.utsname.machine,
+      );
     } else if (CurrentPlatform.isMacOS) {
       final deviceInfo = await DeviceInfoPlugin().macOsInfo;
-      osVersion =
-          '${deviceInfo.majorVersion}.${deviceInfo.minorVersion}.${deviceInfo.patchVersion}';
-      deviceModel = deviceInfo.model;
+      os = sfu_models.OS(
+        name: CurrentPlatform.name,
+        version:
+            '${deviceInfo.majorVersion}.${deviceInfo.minorVersion}.${deviceInfo.patchVersion}',
+        architecture: deviceInfo.arch,
+      );
+      device = sfu_models.Device(
+        name: deviceInfo.model,
+        version: deviceInfo.osRelease,
+      );
     } else if (CurrentPlatform.isWindows) {
       final deviceInfo = await DeviceInfoPlugin().windowsInfo;
-      osVersion =
-          '${deviceInfo.majorVersion}.${deviceInfo.minorVersion}.${deviceInfo.buildNumber}';
+      os = sfu_models.OS(
+        name: CurrentPlatform.name,
+        version:
+            '${deviceInfo.majorVersion}.${deviceInfo.minorVersion}.${deviceInfo.buildNumber}',
+        architecture: deviceInfo.buildLabEx,
+      );
     } else if (CurrentPlatform.isLinux) {
       final deviceInfo = await DeviceInfoPlugin().linuxInfo;
-      osVersion = '${deviceInfo.name} ${deviceInfo.version}';
+      os = sfu_models.OS(
+        name: CurrentPlatform.name,
+        version: '${deviceInfo.name} ${deviceInfo.version}',
+      );
+    } else if (CurrentPlatform.isWeb) {
+      final browserInfo = await DeviceInfoPlugin().webBrowserInfo;
+      browser = sfu_models.Browser(
+        name: browserInfo.browserName.name,
+        version: browserInfo.appVersion,
+      );
     }
 
+    final versionSplit = streamVideoVersion.split('.');
+    clientDetails = sfu_models.ClientDetails(
+      sdk: sfu_models.Sdk(
+        type: sfu_models.SdkType.SDK_TYPE_FLUTTER,
+        major: versionSplit.first,
+        minor: versionSplit.skip(1).first,
+        patch: versionSplit.last,
+      ),
+      os: os,
+      device: device,
+      browser: browser,
+    );
+
+    final deviceName = (device?.name != null && device!.name.isNotEmpty)
+        ? device.name
+        : null;
+
     return clientVersionDetails ??=
-        'app=$appName|app_version=$appVersion|os=${CurrentPlatform.name} $osVersion${deviceModel.isNotEmpty ? '|device_model=$deviceModel' : ''}';
+        'app=$appName|app_version=$appVersion|os=${CurrentPlatform.name} ${os.version}${deviceName != null ? '|device_model=$deviceName' : ''}';
   } catch (e) {
-    streamLog.e(_tag, () => '[_setupComposeVersion] failed: $e');
+    streamLog.e(_tag, () => '[_setClientDetails] failed: $e');
     return null;
   }
 }

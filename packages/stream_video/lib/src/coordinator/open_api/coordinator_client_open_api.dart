@@ -41,13 +41,13 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
     required RetryPolicy retryPolicy,
     required InternetConnection networkMonitor,
     this.isAnonymous = false,
-  })  : _rpcUrl = rpcUrl,
-        _wsUrl = wsUrl,
-        _apiKey = apiKey,
-        _tokenManager = tokenManager,
-        _latencyService = latencyService,
-        _networkMonitor = networkMonitor,
-        _retryPolicy = retryPolicy;
+  }) : _rpcUrl = rpcUrl,
+       _wsUrl = wsUrl,
+       _apiKey = apiKey,
+       _tokenManager = tokenManager,
+       _latencyService = latencyService,
+       _networkMonitor = networkMonitor,
+       _retryPolicy = retryPolicy;
 
   final _logger = taggedLogger(tag: 'SV:CoordClient');
   final String _rpcUrl;
@@ -76,8 +76,6 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
     ),
   );
   late final _defaultApi = open.ProductvideoApi(_apiClient);
-  // ignore: unused_field
-  //late final _serverSideApi = open.ServerSideApi(_apiClient);
   late final _locationService = LocationService();
 
   @override
@@ -115,29 +113,30 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
       userId: user.id,
     );
     _user = user;
-    _ws = _createWebSocket(
-      user,
-      includeUserDetails: includeUserDetails,
-    ).also((ws) {
-      _wsSubscription = ws.events.listen((event) {
-        if (event is CoordinatorConnectedEvent) {
-          _logger.i(() => '[connectUser] WS connected');
-          _connectionState.value = CoordinatorConnectionState.connected(
-            userId: event.userId,
-            connectionId: event.connectionId,
-          );
-        } else if (event is CoordinatorDisconnectedEvent) {
-          _logger.i(() => '[connectUser] WS disconnected');
-          _connectionState.value = CoordinatorConnectionState.disconnected(
-            userId: event.userId,
-            connectionId: event.connectionId,
-            closeCode: event.closeCode,
-            closeReason: event.closeReason,
-          );
-        }
-        _events.emit(event);
-      });
-    });
+    _ws =
+        _createWebSocket(
+          user,
+          includeUserDetails: includeUserDetails,
+        ).also((ws) {
+          _wsSubscription = ws.events.listen((event) {
+            if (event is CoordinatorConnectedEvent) {
+              _logger.i(() => '[connectUser] WS connected');
+              _connectionState.value = CoordinatorConnectionState.connected(
+                userId: event.userId,
+                connectionId: event.connectionId,
+              );
+            } else if (event is CoordinatorDisconnectedEvent) {
+              _logger.i(() => '[connectUser] WS disconnected');
+              _connectionState.value = CoordinatorConnectionState.disconnected(
+                userId: event.userId,
+                connectionId: event.connectionId,
+                closeCode: event.closeCode,
+                closeReason: event.closeReason,
+              );
+            }
+            _events.emit(event);
+          });
+        });
     final openResult = await openConnection();
     if (openResult is Failure) {
       _logger.e(() => '[connectUser] open failed: $openResult');
@@ -162,18 +161,19 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
     );
     return _connectionState
         .firstWhere(
-      (it) => it.isConnected,
-      // TODO
-      // replace timeout with config value,
-      timeLimit: const Duration(milliseconds: _waitForConnectionTimeout),
-    )
+          (it) => it.isConnected,
+          // TODO
+          // replace timeout with config value,
+          timeLimit: const Duration(milliseconds: _waitForConnectionTimeout),
+        )
         .then((it) {
-      _logger.v(() => '[waitUntilConnected] completed: $it');
-      return const Result.success(none);
-    }).onError((error, stackTrace) {
-      _logger.e(() => '[waitUntilConnected] failed: $error; $stackTrace');
-      return Result<None>.failure(VideoErrors.compose(error, stackTrace));
-    });
+          _logger.v(() => '[waitUntilConnected] completed: $it');
+          return const Result.success(none);
+        })
+        .onError((error, stackTrace) {
+          _logger.e(() => '[waitUntilConnected] failed: $error; $stackTrace');
+          return Result<None>.failure(VideoErrors.compose(error, stackTrace));
+        });
   }
 
   @override
@@ -398,7 +398,8 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   }) async {
     try {
       _logger.d(
-        () => '[getCall] cid: $callCid, ringing: $ringing'
+        () =>
+            '[getCall] cid: $callCid, ringing: $ringing'
             ', membersLimit: $membersLimit, ringing: $ringing, notify: $notify'
             ', video: $video',
       );
@@ -452,7 +453,8 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   }) async {
     try {
       _logger.d(
-        () => '[getOrCreateCall] cid: $callCid'
+        () =>
+            '[getOrCreateCall] cid: $callCid'
             ', ringing: $ringing, members: $members'
             ', team: $team, notify: $notify, video: $video'
             ', startsAt: $startsAt, settingsOverride: $settingsOverride',
@@ -517,7 +519,8 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   }) async {
     try {
       _logger.d(
-        () => '[joinCall] cid: $callCid'
+        () =>
+            '[joinCall] cid: $callCid'
             ', ringing: $ringing, create: $create , migratingFrom: $migratingFrom'
             ', video: $video',
       );
@@ -571,6 +574,45 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
     }
   }
 
+  @override
+  Future<Result<List<String>>> ringCall({
+    required StreamCallCid callCid,
+    required List<String> membersIds,
+    bool? video,
+  }) async {
+    try {
+      _logger.d(
+        () =>
+            '[ringCall] cid: $callCid, membersIds: $membersIds, video: $video',
+      );
+
+      final connectionResult = await _waitUntilConnected();
+      if (connectionResult is Failure) {
+        _logger.e(() => '[ringCall] no connection established');
+        return connectionResult;
+      }
+
+      final result = await _defaultApi.ringCall(
+        callCid.type.value,
+        callCid.id,
+        open.RingCallRequest(
+          membersIds: membersIds,
+          video: video,
+        ),
+      );
+
+      _logger.v(() => '[ringCall] completed: $result');
+      if (result == null) {
+        return Result.error('ringCall result is null');
+      }
+
+      return Result.success(result.membersIds);
+    } catch (e, stk) {
+      _logger.e(() => '[ringCall] failed: $e; $stk');
+      return Result.failure(VideoErrors.compose(e, stk));
+    }
+  }
+
   /// Sends a custom event with encoded JSON data.
   @override
   Future<Result<None>> sendCustomEvent({
@@ -580,7 +622,8 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   }) async {
     try {
       _logger.d(
-        () => '[sendCustomEvent] cid: $callCid'
+        () =>
+            '[sendCustomEvent] cid: $callCid'
             ', eventType: $eventType, custom: $custom',
       );
       final connectionResult = await _waitUntilConnected();

@@ -1,3 +1,192 @@
+## 1.2.2
+
+### 🐞 Fixed
+* [Android] Fixed WebSocket/WebRTC connections persisting after app is killed from recents. Foreground services now properly terminate and leave calls when the app task is removed.
+
+## 1.2.1
+
+### ✅ Added
+* Added default sorting preset for Picture-in-Picture mode to prioritize the most relevant participant.
+
+### 🐞 Fixed
+* [Android] Fixed screen share notification tap not opening the app.
+* [Android] Improved screen sharing foreground service reliability:
+  - Added proper synchronization to ensure the foreground service is fully started before initiating media projection.
+  - `startScreenSharingNotificationService` now returns a boolean indicating success/failure, preventing screen share attempts when the service fails to start.
+* [iOS/macOS] Fixed crash when VoIP push is received before Flutter fully initializes from the terminated state.
+
+## 1.2.0
+
+### ✅ Added
+* [Android] Added support for screen audio sharing. To enable it set `captureScreenAudio` to true in `ScreenShareConstraints`. See [documentation](https://getstream.io/video/docs/flutter/advanced/screen_sharing/#screen-audio-sharing) for more details.
+
+### 🐞 Fixed
+* Fixed unnecessary video filter reapplication when camera track is disabled.
+* [Android] Fixed an issue where the camera freezes for person using screen sharing without PiP enabled.
+* [Android] Fixed active foreground service not being started when notification permission is denied.
+
+## 1.1.0
+
+### ✅ Added
+* Added `pipTrackPriority` parameter to `PictureInPictureConfiguration` to control whether screen sharing or camera track is preferred in PiP mode. When set to `camera`, the camera track is preferred, but screen share will still be shown as a fallback if the camera is disabled.
+* Added multiple-host and screen sharing support in `LivestreamPlayer` and `LivestreamContent`.
+  - New flags: `showMultipleHosts`, `layoutMode`, `screenShareMode`.
+  - New builders: `livestreamHostsParticipantBuilder` and `livestreamHostsParticipantsFilter` to customize how hosts are selected and rendered.
+* Added `videoFit` parameter in `LivestreamPlayer` to control contain/cover behavior when not in fullscreen.
+* Livestream reconnect UI customization:
+  - `LivestreamPlayer`/`LivestreamContent`: added `livestreamFastReconnectingOverlayBuilder` to customize the UI shown during fast reconnect.
+  - `LivestreamContent`: `livestreamNotConnectedBuilder` provides `isMigrating`/`isReconnecting` flags to tailor messaging when not connected.
+* Call screen reconnect UI customization:
+  - `StreamCallContent`: added `callFastReconnectingOverlayBuilder` to render a custom overlay while fast reconnecting.
+  - `StreamCallContent`: `callNotConnectedBuilder` now exposes `CallNotConnectedProperties` with `isMigrating`/`isReconnecting` to customize the not-connected/reconnecting view.
+
+### 🐞 Fixed
+* Fixed ANR (Application Not Responding) issue on Android that could happen when starting screen share service.
+* Fixed crash on Android versions below API 31 when disabling Picture-in-Picture mode.
+
+### ⚡ Performance
+
+* Improved `call.join()` performance - reduced join time by optimizing WebRTC setup and deferring non-critical operations.
+* Improved SFU allocation reliability.
+
+## 1.0.2
+
+🐞 Fixed
+* Fixed incoming call timeout handling.
+  - Use `streamVideo.observeCoreRingingEventsForBackground()` instead of `streamVideo.observeCallDeclinedRingingEvent()` in `firebaseMessagingBackgroundHandler` to support all necessary events.
+
+## 1.0.1
+
+### ✅ Added
+* Added support for changing the camera target resolution during an ongoing call using the `call.setCameraTargetResolution()` method.
+
+#### LivestreamPlayer Improvements
+* Added support for Picture in Picture (PiP) mode, configurable via the `pictureInPictureConfiguration` parameter. For platform-specific setup, refer to the [documentation](https://getstream.io/video/docs/flutter/advanced/picture_in_picture/).
+* Introduced the `joinBehaviour` parameter, allowing control over whether and when the `LivestreamPlayer` automatically connects the user to a call.
+* Added the `showRecordingsWhenEnded` parameter to `LivestreamPlayer`, which enables you to show or hide the recordings list in the default livestream ended UI.
+* Refactored `LivestreamPlayer` to leverage `call.partialState` for more efficient state management. New builder methods have been introduced to accommodate this change, and some previous builder methods are now deprecated.
+
+## 1.0.0
+
+### 🚧 Breaking changes
+
+#### CallKit/Ringing
+This release removes the dependency on `flutter_callkit_incoming`, resulting in several breaking changes to CallKit and ringing functionality:
+
+* **CallKit/ringing configuration:** The initialization process is updated. Replace the `pushParams` parameter in `StreamVideoPushNotificationManager` with the new `pushConfiguration` field (`StreamVideoPushConfiguration`).
+* **Parameter renaming:** The `nameCaller` parameter has been standardized and renamed to `callerName` across all relevant locations.
+* **Removed properties:**
+    * The deprecated `callerCustomizationCallback` and `backgroundVoipCallHandler` have been fully removed from `StreamVideoPushNotificationManager`.
+    * The previously used `appName` field in `pushParams` has been removed as it was deprecated. On iOS, the app’s product name from build settings is now used instead.
+* **API renames and type changes**
+    - `onCallKitEvent` is now `onRingingEvent`
+    - `observeCoreCallKitEvents` is now `observeCoreRingingEvents`
+    - `observeCallAcceptCallKitEvent` is now `observeCallAcceptRingingEvent`
+    - `observeCallDeclinedCallKitEvent` is now `observeCallDeclinedRingingEvent`
+    - `observeCallEndedCallKitEvent` is now `observeCallEndedRingingEvent`
+    - The `CallKitEvent` type is now `RingingEvent`
+
+#### Video Filter
+- The video filters feature, which enables blur and virtual backgrounds during calls, has been moved to a new package: `stream_video_filters`. To use video filters, add the package to your `pubspec.yaml` and update your relevant imports.
+
+#### Deprecated members
+- Removed deprecated APIs and parameters. Migrate as follows:
+  - `StreamVideo.muteVideoWhenInBackground` → `StreamVideo.options.muteVideoWhenInBackground`
+  - `StreamVideo.muteAudioWhenInBackground` → `StreamVideo.options.muteAudioWhenInBackground`
+  - Default `StreamCallType()` constructor → `StreamCallType.defaultType()`
+  - `Call.setParticipantPinned()` → `Call.setParticipantPinnedLocally()` (local-only pin)
+  - Removed deprecated `startRtmpBroadcasts` parameter from `Call.goLive()`
+  - Removed `localParticipant` parameter from `AddReactionOption` constructor
+  - Removed multiple deprecated builder callbacks in favor of [callbacks that don't provide the state object](https://github.com/GetStream/stream-video-flutter/pull/983); corresponding state object parameters in affected widgets have been removed.
+  - Deprecated `androidAudioAttributesUsageType` and `androidAudioAttributesContentType` parameters in `RtcMediaDeviceNotifier.handleCallInterruptionCallbacks()`
+---
+
+### 🍏 **Swift Package Manager (SPM)**
+- Added Swift Package Manager (SPM) support for iOS.
+> [!IMPORTANT]  
+> Flutter's iOS SPM is experimental and disabled by default. You can enable it via `flutter config --enable-swift-package-manager`. Flutter will fall back to CocoaPods for plugins that don't support SPM. See the [Flutter SPM docs](https://docs.flutter.dev/packages-and-plugins/swift-package-manager/for-app-developers).
+
+### ✨ Improvements
+- [Android] Significantly improved video filter performance, resulting in smoother frame rates during calls.
+
+### ✅ Added
+- Added `Call.ring()` to ring specific members of an existing call. Example: `call.ring(userIds: ['<userId>'], video: true)`. Sends a ringing/VoIP push to the users’ devices. Users must already be members - use `call.addMembers()` first if needed.
+- Added `RtcMediaDeviceNotifier.pauseAudioPlayout()` / `RtcMediaDeviceNotifier.resumeAudioPlayout()` to mute and restore remote playback with platform-specific handling for iOS/macOS and Android.
+- [Android] Enhanced interruption handling via `RtcMediaDeviceNotifier.handleCallInterruptionCallbacks()`.
+- [Android] Added `RtcMediaDeviceNotifier.regainAndroidAudioFocus()` to request audio focus when it was lost without automatic regain.
+
+### 🐞 Fixed
+* [iOS] Resolved an issue in Picture in Picture where video tracks might remain disabled after returning the app to the foreground.
+* [iOS] Addressed a problem where Picture in Picture was not exited properly if the call ended during PiP mode.
+* [iOS] Fixed a bug where quickly backgrounding the app right after ending a call could still activate PiP mode.
+* Resolved an issue that could cause the StreamVideo instance to be disposed prematurely before ringing events were fully processed when handling ringing notifications in the terminated state.
+
+## 0.11.2
+
+🐞 Fixed
+- [Web] Fixed setting input audio/video device passed by `CallConnectOptions` as well as switching those devices during the call.
+- [Web] Fixed changing the output audio device during the call.
+- [Android/iOS] Fixed an issue where screen sharing was not stopped correctly when canceled via the system UI on Android or iOS.
+- [iOS] Improved broadcast extension handling — the app now waits for the broadcast picker selection before actually starting screen sharing.
+- Resolved an issue where the camera wouldn’t flip correctly if the back camera was selected initially.
+- Fixed an issue where `callMembers` collection wasn't reflecting the actual members list after starting the call session.
+- Fixed an issue with initials creation when multicharacter symbols were used in a user name.
+
+✅ Added
+- [Web] Added `checkIfAudioOutputChangeSupported()` to the `Call` class to check whether the browser supports changing the audio output device.
+
+## 0.11.1
+
+🔄 Changed
+- The `byParticipantSource` participant sorting now accepts a list of sources. The default sorting for `speaker` and `livestream` presets now include other ingress sources.
+- Updated the renderscript dependency on Android to support 16kb page size.
+
+## 0.11.0
+
+🚧 Build breaking changes
+
+> **Important:** This release includes breaking changes for Android development.
+> 
+> **Android Requirements:**
+> - Minimum compileSDK 36
+> - Android Gradle Plugin >=8.12.1
+> - Gradle wrapper >=8.13
+> - Kotlin 2.2.0
+
+* Updated minimum Flutter version to 3.32.0
+* Updated minimum supported Dart SDK version to 3.8.0
+
+🚧 Breaking changes
+
+* **`Call.stats` payload structure changed**
+  - **Before:** `({ CallStats publisherStats, CallStats subscriberStats })`
+  - **Now:** `({ PeerConnectionStatsBundle publisherStatsBundle, PeerConnectionStatsBundle subscriberStatsBundle })`
+  - The record field names and element types have changed to provide more detailed WebRTC statistics
+
+* **Stats-related fields removed from `CallState`**
+  - Removed: `publisherStats`, `subscriberStats`, `latencyHistory`
+    - For periodic WebRTC stats: Use `call.stats` stream
+    - For latest aggregated metrics: Use `call.statsReporter?.currentMetrics`
+
+* **Dependency updates**
+  - Updated most dependencies to their latest versions to ensure compatibility and security
+
+✅ Added
+
+- New `call.statsReporter` property provides access to `currentMetrics`
+- Battery level tracking now available via `call.statsReporter?.currentMetrics`
+- Device thermal status monitoring for better call quality optimization
+
+🔄 Changed
+
+- `Call.stats` record field names and types updated as noted in breaking changes section
+
+🐞 Fixed
+
+- Fixed leave call operation failures when parsing custom data encounters issues
+- [Android] Fixed custom Android audio configuration application for participants joining calls
+- [Android] Fixed video rendering issue where background textures were incorrectly blended with video content on devices using Impeller rendering engine
+
 ## 0.10.4
 
 ✅ Added

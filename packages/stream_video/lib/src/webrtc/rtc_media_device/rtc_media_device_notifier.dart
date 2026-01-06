@@ -1,8 +1,11 @@
 import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart' as rtc;
 
 import '../../../open_api/video/coordinator/api.dart';
+import '../../call/stats/tracer.dart';
 import '../../errors/video_error_composer.dart';
 import '../../platform_detector/platform_detector.dart';
 import '../../utils/extensions.dart';
@@ -14,6 +17,18 @@ abstract class InterruptionEvent {}
 class InterruptionBeginEvent extends InterruptionEvent {}
 
 class InterruptionEndEvent extends InterruptionEvent {}
+
+abstract class NativeWebRtcEvent {}
+
+class ScreenSharingStoppedEvent extends NativeWebRtcEvent {
+  ScreenSharingStoppedEvent({this.data});
+  final Map<dynamic, dynamic>? data;
+}
+
+class ScreenSharingStartedEvent extends NativeWebRtcEvent {
+  ScreenSharingStartedEvent({this.data});
+  final Map<dynamic, dynamic>? data;
+}
 
 class RtcMediaDeviceNotifier {
   RtcMediaDeviceNotifier._internal() {
@@ -28,12 +43,17 @@ class RtcMediaDeviceNotifier {
   Stream<List<RtcMediaDevice>> get onDeviceChange => _devicesController.stream;
   final _devicesController = BehaviorSubject<List<RtcMediaDevice>>();
 
+  final _tracer = Tracer(null);
+
+  @internal
+  TraceSlice getTrace() {
+    return _tracer.take();
+  }
+
   /// Allows to handle call interruption callbacks.
   /// [onInterruptionStart] is called when the call interruption begins.
   /// [onInterruptionEnd] is called when the call interruption ends.
   /// [androidInterruptionSource] specifies the source of the interruption on Android.
-  /// [androidAudioAttributesUsageType] and [androidAudioAttributesContentType] allow you to specify
-  /// the audio attributes that will be used when requesting audio focus.
   ///
   /// On iOS, interruptions can occur due to:
   /// - Incoming phone calls
@@ -59,25 +79,47 @@ class RtcMediaDeviceNotifier {
     void Function()? onInterruptionEnd,
     rtc.AndroidInterruptionSource androidInterruptionSource =
         rtc.AndroidInterruptionSource.audioFocusAndTelephony,
+    @Deprecated(
+      'Audio focus is now handled in a way that does not require this parameter. It will be removed in the next major version.',
+    )
     rtc.AndroidAudioAttributesUsageType? androidAudioAttributesUsageType,
+    @Deprecated(
+      'Audio focus is now handled in a way that does not require this parameter. It will be removed in the next major version.',
+    )
     rtc.AndroidAudioAttributesContentType? androidAudioAttributesContentType,
   }) {
     return rtc.handleCallInterruptionCallbacks(
       onInterruptionStart,
       onInterruptionEnd,
       androidInterruptionSource: androidInterruptionSource,
-      androidAudioAttributesUsageType: androidAudioAttributesUsageType,
-      androidAudioAttributesContentType: androidAudioAttributesContentType,
     );
   }
 
+  Stream<NativeWebRtcEvent> nativeWebRtcEventsStream() {
+    return rtc.eventStream
+        .map<NativeWebRtcEvent?>((data) {
+          if (data.isEmpty) return null;
+
+          final event = data.keys.first;
+          final values = data.values.first;
+
+          if (values is! Map<dynamic, dynamic>?) return null;
+
+          switch (event) {
+            case 'screenSharingStopped':
+              return ScreenSharingStoppedEvent(data: values);
+            case 'screenSharingStarted':
+              return ScreenSharingStartedEvent(data: values);
+            default:
+              return null;
+          }
+        })
+        .whereNotNull()
+        .asBroadcastStream();
+  }
+
   Future<void> _onDeviceChange(_) async {
-    final devicesResult = await enumerateDevices();
-    final devices = devicesResult.getDataOrNull();
-
-    if (devices == null) return;
-
-    _devicesController.add(devices);
+    await enumerateDevices();
   }
 
   Future<Result<List<RtcMediaDevice>>> enumerateDevices({
@@ -95,6 +137,7 @@ class RtcMediaDeviceNotifier {
             kind: RtcMediaDeviceKind.fromAlias(it.kind),
           );
         }),
+
         if (CurrentPlatform.isIos &&
             (kind == null || kind == RtcMediaDeviceKind.audioOutput) &&
             devices.none(
@@ -109,6 +152,13 @@ class RtcMediaDeviceNotifier {
             kind: RtcMediaDeviceKind.audioOutput,
           ),
       ];
+
+      _tracer.trace(
+        'navigator.mediaDevices.enumeratedevices',
+        mediaDevices.map((device) => device.toJson()).toList(),
+      );
+
+      _devicesController.add(mediaDevices);
 
       if (kind != null) {
         final devices = mediaDevices.where((d) => d.kind == kind);
@@ -139,5 +189,30 @@ class RtcMediaDeviceNotifier {
 
   Future<void> triggeriOSAudioRouteSelectionUI() {
     return rtc.Helper.triggeriOSAudioRouteSelectionUI();
+  }
+
+  /// Temporarily mutes all audio output (playout) from the app.
+  /// This does not affect the microphone or remote track subscriptions.
+  /// Use as a global "mute all sounds" toggle or when the app goes to background.
+  Future<void> pauseAudioPlayout() {
+    _tracer.trace('navigator.mediaDevices.pauseAudioPlayout', null);
+    return rtc.Helper.pauseAudioPlayout();
+  }
+
+  /// Resumes audio output (playout) muted via [pauseAudioPlayout].
+  /// Does not change microphone state or remote track subscriptions.
+  Future<void> resumeAudioPlayout() {
+    _tracer.trace('navigator.mediaDevices.resumeAudioPlayout', null);
+    return rtc.Helper.resumeAudioPlayout();
+  }
+
+  /// Regains Android audio focus if it was lost.
+  ///
+  /// Note: On Android, audio focus may not be restored automatically.
+  /// To ensure you receive `onInterruptionEnd`, explicitly call
+  /// [resumeAudioPlayout] (e.g., when the app resumes from background).
+  Future<void> regainAndroidAudioFocus() {
+    _tracer.trace('navigator.mediaDevices.regainAndroidAudioFocus', null);
+    return rtc.Helper.regainAndroidAudioFocus();
   }
 }

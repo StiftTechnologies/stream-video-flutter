@@ -1,3 +1,9 @@
+/// Stream Video Flutter UI toolkit and widgets.
+///
+/// High-level Flutter components, themes, and utilities for building call
+/// experiences with the Stream Video SDK. Import this library to access call
+/// screens, participants views, controls, livestream UI, screen sharing, and
+/// related helpers built on top of `package:stream_video/stream_video.dart`.
 library stream_video_flutter;
 
 export 'package:stream_video/stream_video.dart';
@@ -21,7 +27,9 @@ export 'src/call_controls/controls/toggle_screen_sharing_option.dart';
 export 'src/call_controls/controls/toggle_speakerphone_option.dart';
 export 'src/call_participants/call_participant.dart';
 export 'src/call_participants/call_participants.dart';
+export 'src/call_participants/call_participants_sorting_mixin.dart';
 export 'src/call_participants/layout/participant_layout_mode.dart';
+export 'src/call_participants/livestream_hosts.dart';
 export 'src/call_participants/local_video.dart';
 export 'src/call_screen/call_container.dart';
 export 'src/call_screen/call_content/call_app_bar.dart';
@@ -46,7 +54,6 @@ export 'src/renderer/video_renderer.dart';
 export 'src/screen_share/screen_share.dart';
 export 'src/theme/themes.dart';
 export 'src/utils/device_segmentation.dart';
-export 'src/video_effects/video_effects_manager.dart';
 export 'src/widgets/floating_view/floating_view_alignment.dart';
 export 'src/widgets/floating_view/floating_view_container.dart';
 export 'src/widgets/partial_call_state_builder.dart';

@@ -44,6 +44,15 @@ class RtcMediaDevice with EquatableMixin {
   @override
   List<Object?> get props => [id, kind, groupId, label];
 
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'label': label,
+      'groupId': groupId,
+      'kind': kind.alias,
+    };
+  }
+
   /// The set of external audio ports that are considered external outputs
   static const Set<String> iOSExternalPorts = {
     'bluetoothA2DP',
@@ -69,14 +78,14 @@ class RtcMediaDevice with EquatableMixin {
     if (CurrentPlatform.isIos) {
       return iOSExternalPorts.any(
         (port) => groupId!.toLowerCase().contains(
-              port.toLowerCase(),
-            ),
+          port.toLowerCase(),
+        ),
       );
     } else if (CurrentPlatform.isAndroid) {
       return androidExternalAudioDeviceType.any(
         (type) => groupId!.toLowerCase().contains(
-              type.toLowerCase(),
-            ),
+          type.toLowerCase(),
+        ),
       );
     } else {
       return groupId!.toLowerCase().contains('bluetooth');

@@ -66,6 +66,9 @@ class StreamLivestreamThemeData with Diagnosticable {
     this.contractIconTheme = const IconThemeData(
       color: Colors.white,
     ),
+    this.hostsGridPadding = const EdgeInsets.all(4),
+    this.hostsGridMainAxisSpacing = 4,
+    this.hostsGridCrossAxisSpacing = 4,
   });
 
   /// The icon theme for the play icon for playing the livestream
@@ -122,6 +125,15 @@ class StreamLivestreamThemeData with Diagnosticable {
   /// The icon theme for the contract icon on the control bar
   final IconThemeData contractIconTheme;
 
+  /// The padding between the hosts in the grid layout.
+  final EdgeInsets hostsGridPadding;
+
+  /// Main axis spacing between the hosts in the grid layout.
+  final double hostsGridMainAxisSpacing;
+
+  /// Cross axis spacing between the hosts in the grid layout.
+  final double hostsGridCrossAxisSpacing;
+
   /// Creates a copy of this object with the given fields replaced with the
   /// new values.
   StreamLivestreamThemeData copyWith({
@@ -143,6 +155,9 @@ class StreamLivestreamThemeData with Diagnosticable {
     IconThemeData? speakerDisabledIconTheme,
     IconThemeData? expandIconTheme,
     IconThemeData? contractIconTheme,
+    EdgeInsets? hostsGridPadding,
+    double? hostsGridMainAxisSpacing,
+    double? hostsGridCrossAxisSpacing,
   }) {
     return StreamLivestreamThemeData(
       playIconTheme: playIconTheme ?? this.playIconTheme,
@@ -170,6 +185,11 @@ class StreamLivestreamThemeData with Diagnosticable {
           speakerDisabledIconTheme ?? this.speakerDisabledIconTheme,
       expandIconTheme: expandIconTheme ?? this.expandIconTheme,
       contractIconTheme: contractIconTheme ?? this.contractIconTheme,
+      hostsGridPadding: hostsGridPadding ?? this.hostsGridPadding,
+      hostsGridMainAxisSpacing:
+          hostsGridMainAxisSpacing ?? this.hostsGridMainAxisSpacing,
+      hostsGridCrossAxisSpacing:
+          hostsGridCrossAxisSpacing ?? this.hostsGridCrossAxisSpacing,
     );
   }
 
@@ -182,13 +202,22 @@ class StreamLivestreamThemeData with Diagnosticable {
   ) {
     return StreamLivestreamThemeData(
       playIconTheme: IconThemeData.lerp(playIconTheme, other.playIconTheme, t),
-      pauseIconTheme:
-          IconThemeData.lerp(pauseIconTheme, other.pauseIconTheme, t),
-      playPauseIconSize:
-          lerpDouble(playPauseIconSize, other.playPauseIconSize, t)!,
+      pauseIconTheme: IconThemeData.lerp(
+        pauseIconTheme,
+        other.pauseIconTheme,
+        t,
+      ),
+      playPauseIconSize: lerpDouble(
+        playPauseIconSize,
+        other.playPauseIconSize,
+        t,
+      )!,
       liveButtonColor: Color.lerp(liveButtonColor, other.liveButtonColor, t)!,
-      backstageButtonColor:
-          Color.lerp(backstageButtonColor, other.backstageButtonColor, t)!,
+      backstageButtonColor: Color.lerp(
+        backstageButtonColor,
+        other.backstageButtonColor,
+        t,
+      )!,
       callStateButtonTextStyle: TextStyle.lerp(
         callStateButtonTextStyle,
         other.callStateButtonTextStyle,
@@ -254,30 +283,45 @@ class StreamLivestreamThemeData with Diagnosticable {
         other.contractIconTheme,
         t,
       ),
+      hostsGridPadding: EdgeInsets.lerp(
+        hostsGridPadding,
+        other.hostsGridPadding,
+        t,
+      )!,
+      hostsGridMainAxisSpacing: lerpDouble(
+        hostsGridMainAxisSpacing,
+        other.hostsGridMainAxisSpacing,
+        t,
+      )!,
+      hostsGridCrossAxisSpacing: lerpDouble(
+        hostsGridCrossAxisSpacing,
+        other.hostsGridCrossAxisSpacing,
+        t,
+      )!,
     );
   }
 
   @override
   int get hashCode => Object.hash(
-        playIconTheme,
-        pauseIconTheme,
-        playPauseIconSize,
-        liveButtonColor,
-        backstageButtonColor,
-        callStateButtonTextStyle,
-        participantCountTextStyle,
-        durationTextStyle,
-        backstageTextStyle,
-        backstageCounterTextStyle,
-        backstageParticipantsTextStyle,
-        liveEndedTextStyle,
-        liveEndedRecordingsTextStyle,
-        participantIconTheme,
-        speakerEnabledIconTheme,
-        speakerDisabledIconTheme,
-        expandIconTheme,
-        contractIconTheme,
-      );
+    playIconTheme,
+    pauseIconTheme,
+    playPauseIconSize,
+    liveButtonColor,
+    backstageButtonColor,
+    callStateButtonTextStyle,
+    participantCountTextStyle,
+    durationTextStyle,
+    backstageTextStyle,
+    backstageCounterTextStyle,
+    backstageParticipantsTextStyle,
+    liveEndedTextStyle,
+    liveEndedRecordingsTextStyle,
+    participantIconTheme,
+    speakerEnabledIconTheme,
+    speakerDisabledIconTheme,
+    expandIconTheme,
+    contractIconTheme,
+  );
 
   @override
   bool operator ==(Object other) {
@@ -306,7 +350,10 @@ class StreamLivestreamThemeData with Diagnosticable {
         other.speakerEnabledIconTheme == speakerEnabledIconTheme &&
         other.speakerDisabledIconTheme == speakerDisabledIconTheme &&
         other.expandIconTheme == expandIconTheme &&
-        other.contractIconTheme == contractIconTheme;
+        other.contractIconTheme == contractIconTheme &&
+        other.hostsGridPadding == hostsGridPadding &&
+        other.hostsGridMainAxisSpacing == hostsGridMainAxisSpacing &&
+        other.hostsGridCrossAxisSpacing == hostsGridCrossAxisSpacing;
   }
 
   @override
@@ -374,7 +421,20 @@ class StreamLivestreamThemeData with Diagnosticable {
         ),
       )
       ..add(DiagnosticsProperty('expandIconTheme', expandIconTheme))
-      ..add(DiagnosticsProperty('contractIconTheme', contractIconTheme));
+      ..add(DiagnosticsProperty('contractIconTheme', contractIconTheme))
+      ..add(DiagnosticsProperty('hostsGridPadding', hostsGridPadding))
+      ..add(
+        DiagnosticsProperty(
+          'hostsGridMainAxisSpacing',
+          hostsGridMainAxisSpacing,
+        ),
+      )
+      ..add(
+        DiagnosticsProperty(
+          'hostsGridCrossAxisSpacing',
+          hostsGridCrossAxisSpacing,
+        ),
+      );
   }
 
   /// Merges one [StreamLivestreamThemeData] with the another.
@@ -399,6 +459,9 @@ class StreamLivestreamThemeData with Diagnosticable {
       speakerDisabledIconTheme: other.speakerDisabledIconTheme,
       expandIconTheme: other.expandIconTheme,
       contractIconTheme: other.contractIconTheme,
+      hostsGridPadding: other.hostsGridPadding,
+      hostsGridMainAxisSpacing: other.hostsGridMainAxisSpacing,
+      hostsGridCrossAxisSpacing: other.hostsGridCrossAxisSpacing,
     );
   }
 }
@@ -420,8 +483,8 @@ class StreamLivestreamTheme extends InheritedWidget {
   /// [StreamLivestreamTheme] ancestor. If there is no ancestor,
   /// it returns [StreamVideoTheme.livestreamTheme].
   static StreamLivestreamThemeData of(BuildContext context) {
-    final livestreamTheme =
-        context.dependOnInheritedWidgetOfExactType<StreamLivestreamTheme>();
+    final livestreamTheme = context
+        .dependOnInheritedWidgetOfExactType<StreamLivestreamTheme>();
     return livestreamTheme?.data ??
         StreamVideoTheme.of(context).livestreamTheme;
   }

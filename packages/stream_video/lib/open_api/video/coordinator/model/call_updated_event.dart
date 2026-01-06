@@ -29,7 +29,7 @@ class CallUpdatedEvent {
 
   DateTime createdAt;
 
-  /// The type of event: \"call.ended\" in this case
+  /// The type of event: \"call.updated\" in this case
   String type;
 
   @override
@@ -109,7 +109,9 @@ class CallUpdatedEvent {
       // ignore: parameter_assignments
       json = json.cast<String, dynamic>();
       for (final entry in json.entries) {
-        map[entry.key] = entry.value.cast<String>();
+        if (entry.value is List) {
+          map[entry.key] = (entry.value as List).cast<String>();
+        }
       }
     }
     return growable ? map : Map.unmodifiable(map);

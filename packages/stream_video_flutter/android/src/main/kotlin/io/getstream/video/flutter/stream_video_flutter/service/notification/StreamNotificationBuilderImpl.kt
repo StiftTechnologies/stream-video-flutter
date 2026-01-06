@@ -27,8 +27,8 @@ import android.view.View
 import android.widget.RemoteViews
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
-import com.squareup.picasso.OkHttp3Downloader
-import com.squareup.picasso.Picasso
+import coil.ImageLoader
+import coil.request.ImageRequest
 import io.getstream.log.StreamLog
 import io.getstream.log.taggedLogger
 import io.getstream.video.flutter.stream_video_flutter.R
@@ -39,7 +39,6 @@ import io.getstream.video.flutter.stream_video_flutter.service.notification.imag
 import io.getstream.video.flutter.stream_video_flutter.service.utils.applicationName
 import io.getstream.video.flutter.stream_video_flutter.service.utils.notificationManager
 import kotlinx.coroutines.CoroutineScope
-import okhttp3.Headers
 import okhttp3.OkHttpClient
 
 private const val TAG = "StreamNtfBuilder"
@@ -98,21 +97,13 @@ internal class StreamNotificationBuilderImpl(
             PendingIntent.FLAG_UPDATE_CURRENT
         }
 
-        val contentIntent = if(type == ServiceType.call) {
-            PendingIntent.getActivity(
-                    context,
-                    0,
-                    intent,
-                    flags,
-            )
-        } else {
-            PendingIntent.getBroadcast(
-                    context,
-                    0,
-                    intent,
-                    PendingIntent.FLAG_IMMUTABLE,
-            )
-        }
+        // Both call and screen share notifications should open the app when tapped
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            flags,
+        )
 
         val channelId = getNotificationChannelId()
 
@@ -163,10 +154,7 @@ internal class StreamNotificationBuilderImpl(
         if (!avatarUrl.isNullOrEmpty()) {
             logger.i { "[loadAvatar] avatarUrl: $avatarUrl" }
             val headers = payload.options.avatar.httpHeaders
-            context.getPicassoInstance(headers)
-                .load(avatarUrl)
-                .transform(CircleTransform())
-                .into(defaultTarget(builder = this))
+            context.loadImageWithCoil(avatarUrl, headers, defaultTarget(builder = this))
         } 
     }
 
@@ -213,16 +201,15 @@ internal class StreamNotificationBuilderImpl(
         if (!avatarUrl.isNullOrEmpty()) {
             logger.i { "[loadAvatar] avatarUrl: $avatarUrl" }
             val headers = payload.options.avatar.httpHeaders
-            context.getPicassoInstance(headers)
-                .load(avatarUrl)
-                .transform(CircleTransform())
-                .into(
-                    customTarget(
-                        builder = this,
-                        notificationLargeLayout = notificationLargeLayout,
-                        notificationSmallLayout = notificationSmallLayout
-                    )
+            context.loadImageWithCoil(
+                avatarUrl, 
+                headers,
+                customTarget(
+                    builder = this,
+                    notificationLargeLayout = notificationLargeLayout,
+                    notificationSmallLayout = notificationSmallLayout
                 )
+            )
         } 
     }
 
@@ -274,9 +261,7 @@ internal class StreamNotificationBuilderImpl(
         val avatarUrl = payload.options?.avatar?.url
         if (!avatarUrl.isNullOrEmpty()) {
             val headers = payload.options.avatar.httpHeaders
-            context.getPicassoInstance(headers).load(avatarUrl)
-                .transform(CircleTransform())
-                .into(customTarget)
+            context.loadImageWithCoil(avatarUrl, headers, customTarget)
         }
 
         return this
@@ -285,28 +270,45 @@ internal class StreamNotificationBuilderImpl(
 }
 
 private fun useSmallExLayout(): Boolean {
-    val isCustomSmallExNotification = false
     return Build.MANUFACTURER.equals(
         "Samsung",
         ignoreCase = true
-    ) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S || isCustomSmallExNotification
+    ) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 }
 
-private fun Context.getPicassoInstance(headers: Map<String, String>): Picasso {
-    StreamLog.d(TAG) { "[interceptRequest] headers: $headers" }
-    val client = OkHttpClient.Builder()
-        .addInterceptor { chain ->
-            StreamLog.v(TAG) { "[interceptRequest] request: ${chain.request()}" }
-            val newRequest = chain.request()
-                .newBuilder()
-                .headers(Headers.of(headers))
-                .build()
-            chain.proceed(newRequest)
+/**
+ * Singleton holder for ImageLoader to avoid creating expensive OkHttpClient and ImageLoader instances
+ */
+private object ImageLoaderHolder {
+    @Volatile
+    private var imageLoader: ImageLoader? = null
+    
+    fun getImageLoader(context: Context): ImageLoader {
+        return imageLoader ?: synchronized(this) {
+            imageLoader ?: createImageLoader(context.applicationContext).also { imageLoader = it }
         }
-        .build()
-    return Picasso.Builder(this)
-        .downloader(OkHttp3Downloader(client))
-        .build()
+    }
+    
+    private fun createImageLoader(context: Context): ImageLoader {
+        val client = OkHttpClient.Builder().build()
+        return ImageLoader.Builder(context)
+            .okHttpClient(client)
+            .build()
+    }
+}
+
+private fun Context.loadImageWithCoil(url: String, headers: Map<String, String>, target: coil.target.Target) {
+    val imageLoader = ImageLoaderHolder.getImageLoader(this)
+    val requestBuilder = ImageRequest.Builder(this)
+        .data(url)
+        .transformations(CircleTransform())
+        .target(target)
+    
+    headers.forEach { (key, value) ->
+        requestBuilder.addHeader(key, value)
+    }
+    
+    imageLoader.enqueue(requestBuilder.build())
 }
 
 class NotificationLayout(

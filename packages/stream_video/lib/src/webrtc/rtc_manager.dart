@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
+import 'package:rxdart/transformers.dart';
 import 'package:sdp_transform/sdp_transform.dart';
 import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart' as rtc;
 
@@ -27,7 +30,10 @@ import 'model/rtc_video_encoding.dart';
 import 'model/rtc_video_parameters.dart';
 import 'peer_connection.dart';
 import 'peer_type.dart';
+import 'rtc_audio_api/rtc_audio_api.dart'
+    show checkIfAudioOutputChangeSupported;
 import 'rtc_media_device/rtc_media_device.dart';
+import 'rtc_media_device/rtc_media_device_notifier.dart';
 import 'rtc_parser.dart';
 import 'rtc_track/rtc_track.dart';
 import 'traced_peer_connection.dart';
@@ -46,10 +52,11 @@ typedef OnLocalTrackPublished = void Function(RtcLocalTrack track);
 /// {@template OnRemoteTrackPublished}
 /// Called when a subscriber track is received.
 /// {@endtemplate}
-typedef OnRemoteTrackReceived = void Function(
-  StreamPeerConnection pc,
-  RtcRemoteTrack track,
-);
+typedef OnRemoteTrackReceived =
+    void Function(
+      StreamPeerConnection pc,
+      RtcRemoteTrack track,
+    );
 
 const _tag = 'SV:RtcManager';
 
@@ -76,7 +83,7 @@ class RtcManager extends Disposable {
   final transceiversManager = TransceiverManager();
   List<SfuPublishOptions> publishOptions;
 
-  final tracks = < /*trackId*/ String, RtcTrack>{};
+  final tracks = </*trackId*/ String, RtcTrack>{};
 
   set onPublisherIceCandidate(OnIceCandidate? cb) {
     publisher?.onIceCandidate = cb;
@@ -99,10 +106,28 @@ class RtcManager extends Disposable {
   OnLocalTrackPublished? onLocalTrackPublished;
   OnRemoteTrackReceived? onRemoteTrackReceived;
 
-  /// Returns a generic sdp.
+  StreamSubscription<ScreenSharingStartedEvent>?
+  _screenSharingStartedSubscription;
+
+  static final Map<rtc.TransceiverDirection, String> _cachedGenericSdp = {};
+
+  static Future<void> cacheGenericSdp() async {
+    await Future.wait([
+      getGenericSdp(rtc.TransceiverDirection.RecvOnly),
+      getGenericSdp(rtc.TransceiverDirection.SendOnly),
+    ]);
+  }
+
+  /// Returns a generic sdp. Results are cached since device capabilities
+  /// don't change between calls.
   static Future<String> getGenericSdp(
     rtc.TransceiverDirection direction,
   ) async {
+    // Check cache first
+    if (_cachedGenericSdp.containsKey(direction)) {
+      return _cachedGenericSdp[direction]!;
+    }
+
     final tempPC = await rtc.createPeerConnection({});
 
     await tempPC.addTransceiver(
@@ -119,7 +144,14 @@ class RtcManager extends Disposable {
     final sdp = offer.sdp;
 
     await tempPC.dispose();
-    return sdp!;
+
+    if (sdp == null) {
+      taggedLogger(tag: _tag).e(() => '[getGenericSdp] sdp is null');
+      return '';
+    }
+
+    _cachedGenericSdp[direction] = sdp;
+    return sdp;
   }
 
   Future<String?> onSubscriberOffer(String offerSdp) async {
@@ -362,12 +394,12 @@ class RtcManager extends Disposable {
     for (final encoder in params.encodings!) {
       final layer = usesSvcCodec
           ? // for SVC, we only have one layer (q) and often rid is omitted
-          enabledLayers.firstOrNull
+            enabledLayers.firstOrNull
           : // for non-SVC, we need to find the layer by rid (simulcast)
-          enabledLayers.firstWhereOrNull((l) => l.name == encoder.rid) ??
-              (params.encodings!.length == 1
-                  ? enabledLayers.firstOrNull
-                  : null);
+            enabledLayers.firstWhereOrNull((l) => l.name == encoder.rid) ??
+                (params.encodings!.length == 1
+                    ? enabledLayers.firstOrNull
+                    : null);
 
       // flip 'active' flag only when necessary
       final shouldActivate = layer?.active ?? false;
@@ -424,6 +456,8 @@ class RtcManager extends Disposable {
   @override
   Future<void> dispose() async {
     _logger.d(() => '[dispose] no args');
+    await _screenSharingStartedSubscription?.cancel();
+    _screenSharingStartedSubscription = null;
     for (final trackSid in [...tracks.keys]) {
       await unpublishTrack(trackId: trackSid);
     }
@@ -544,8 +578,9 @@ extension PublisherRtcManager on RtcManager {
   }) {
     final track = transceiverCache.track;
 
-    final transceiverInitialIndex =
-        transceiversManager.indexOf(transceiverCache.transceiver);
+    final transceiverInitialIndex = transceiversManager.indexOf(
+      transceiverCache.transceiver,
+    );
 
     if (track is RtcLocalAudioTrack) {
       return RtcTrackInfo(
@@ -709,8 +744,9 @@ extension PublisherRtcManager on RtcManager {
           ],
         );
 
-        _logger
-            .v(() => '[publishVideoTrack] new transceiver: $transceiverResult');
+        _logger.v(
+          () => '[publishVideoTrack] new transceiver: $transceiverResult',
+        );
       } else {
         final previousTrack = cashedTransceiver.sender.track;
 
@@ -784,11 +820,11 @@ extension PublisherRtcManager on RtcManager {
   }
 
   Future<
-      Result<
-          ({
-            rtc.RTCRtpTransceiver transceiver,
-            rtc.MediaStreamTrack mediaTrack,
-          })>> _addTransceiver(
+    Result<
+      ({rtc.RTCRtpTransceiver transceiver, rtc.MediaStreamTrack mediaTrack})
+    >
+  >
+  _addTransceiver(
     RtcLocalTrack track,
     SfuPublishOptions publishOptions,
   ) async {
@@ -890,8 +926,9 @@ extension PublisherRtcManager on RtcManager {
 
     // If the track was released before, restart it.
     if (track.stopTrackOnMute) {
-      final transceivers =
-          transceiversManager.getTransceiversForTrack(track.trackId).toList();
+      final transceivers = transceiversManager
+          .getTransceiversForTrack(track.trackId)
+          .toList();
 
       final updatedTrack = await track.recreate(transceivers);
       tracks[trackId] = updatedTrack;
@@ -984,6 +1021,10 @@ extension PublisherRtcManager on RtcManager {
   Future<Result<RtcLocalCameraTrack>> setTrackFacingMode({
     required FacingMode facingMode,
   }) async {
+    _logger.d(
+      () => '[setTrackFacingMode] facingMode: $facingMode',
+    );
+
     final track = getPublisherTrackByType(SfuTrackType.video);
     if (track == null) return Result.error('Track not found');
 
@@ -992,13 +1033,52 @@ extension PublisherRtcManager on RtcManager {
       return Result.error('Track is not camera');
     }
 
-    final transceivers =
-        transceiversManager.getTransceiversForTrack(track.trackId).toList();
+    final transceivers = transceiversManager
+        .getTransceiversForTrack(track.trackId)
+        .toList();
 
     final updatedTrack = await track.recreate(
       transceivers,
       mediaConstraints: track.mediaConstraints.copyWith(
         facingMode: facingMode,
+      ),
+    );
+
+    tracks[updatedTrack.trackId] = updatedTrack;
+    return Result.success(updatedTrack);
+  }
+
+  Future<Result<RtcLocalCameraTrack>> setCameraVideoParameters({
+    required RtcVideoParameters params,
+  }) async {
+    _logger.d(
+      () => '[setCameraVideoParameters] params: $params',
+    );
+
+    final track = getPublisherTrackByType(SfuTrackType.video);
+
+    if (track == null) {
+      _logger.w(() => '[setCameraVideoParameters] rejected (track not found)');
+      return Result.error('Track not found');
+    }
+
+    if (track is! RtcLocalCameraTrack) {
+      _logger.w(
+        () => '[setCameraVideoParameters] rejected (track is not camera)',
+      );
+      return Result.error('Track is not camera');
+    }
+
+    final transceivers = transceiversManager
+        .getTransceiversForTrack(track.trackId)
+        .toList();
+
+    final updatedTrack = await track.recreate(
+      transceivers,
+      mediaConstraints: track.mediaConstraints.copyWith(
+        params: track.mediaConstraints.params.copyWith(
+          dimension: params.dimension,
+        ),
       ),
     );
 
@@ -1025,10 +1105,17 @@ extension RtcManagerTrackHelper on RtcManager {
       return Result.error('Track is not camera');
     }
 
-    final updatedTrack = await track.flipCamera();
-    tracks[updatedTrack.trackId] = updatedTrack;
+    track.disable();
 
-    return Result.success(updatedTrack);
+    try {
+      final updatedTrack = await track.flipCamera();
+      tracks[updatedTrack.trackId] = updatedTrack;
+      return Result.success(updatedTrack);
+    } finally {
+      // small delay avoids camera being mirrored wrongly for a brief moment
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      track.enable();
+    }
   }
 
   Future<Result<RtcLocalCameraTrack>> setVideoInputDevice({
@@ -1045,8 +1132,9 @@ extension RtcManagerTrackHelper on RtcManager {
       return Result.error('Track is not camera');
     }
 
-    final transceivers =
-        transceiversManager.getTransceiversForTrack(track.trackId).toList();
+    final transceivers = transceiversManager
+        .getTransceiversForTrack(track.trackId)
+        .toList();
 
     final updatedTrack = await track.selectVideoInput(device, transceivers);
     tracks[updatedTrack.trackId] = updatedTrack;
@@ -1071,8 +1159,9 @@ extension RtcManagerTrackHelper on RtcManager {
       return Result.error('Track is not audio');
     }
 
-    final transceivers =
-        transceiversManager.getTransceiversForTrack(track.trackId).toList();
+    final transceivers = transceiversManager
+        .getTransceiversForTrack(track.trackId)
+        .toList();
 
     final updatedTrack = await track.selectAudioInput(transceivers, device);
     tracks[updatedTrack.trackId] = updatedTrack;
@@ -1084,13 +1173,23 @@ extension RtcManagerTrackHelper on RtcManager {
     required RtcMediaDevice device,
   }) async {
     // Get all remote audio tracks.
-    final audioTracks = tracks.values
-        .whereType<RtcRemoteTrack>()
-        .where((it) => it.trackType == SfuTrackType.audio);
+    final audioTracks = tracks.values.whereType<RtcRemoteTrack>().where(
+      (it) => it.trackType == SfuTrackType.audio,
+    );
 
     // If the platform is web, set the sink id for all remote audio tracks
     // to the selected device.
     if (CurrentPlatform.isWeb) {
+      if (!checkIfAudioOutputChangeSupported()) {
+        _logger.w(
+          () =>
+              '[setAudioOutputDevice] rejected: Audio Output device change is not supported on this browser.',
+        );
+        return Result.error(
+          'Audio Output device change is not supported on this browser.',
+        );
+      }
+
       for (final audioTrack in audioTracks) {
         final updatedTrack = audioTrack.setSinkId(device.id);
         tracks[updatedTrack.trackId] = updatedTrack;
@@ -1157,12 +1256,38 @@ extension RtcManagerTrackHelper on RtcManager {
   Future<Result<RtcLocalTrack>> setScreenShareEnabled({
     bool enabled = true,
     ScreenShareConstraints? constraints,
-  }) {
-    return _setTrackEnabled(
-      trackType: SfuTrackType.screenShare,
-      enabled: enabled,
-      constraints: constraints,
-    );
+  }) async {
+    if (CurrentPlatform.isIos &&
+        enabled &&
+        constraints is ScreenShareConstraints &&
+        constraints.useiOSBroadcastExtension) {
+      final screenShareTrackResult = await createScreenShareTrack(
+        constraints: constraints,
+      );
+
+      if (screenShareTrackResult.isFailure) {
+        _logger.e(
+          () =>
+              '[ScreenSharingStartedEvent] failed to create screen share track: ${screenShareTrackResult.getErrorOrNull()}',
+        );
+        return screenShareTrackResult;
+      }
+
+      _startListeningToScreenShareStarted(
+        screenShareTrackResult.getDataOrNull()!,
+      );
+
+      return Future.value(
+        Result.success(screenShareTrackResult.getDataOrNull()!),
+      );
+    } else {
+      await _screenSharingStartedSubscription?.cancel();
+      return _setTrackEnabled(
+        trackType: SfuTrackType.screenShare,
+        enabled: enabled,
+        constraints: constraints,
+      );
+    }
   }
 
   Future<Result<RtcLocalTrack>> _setTrackEnabled({
@@ -1174,9 +1299,9 @@ extension RtcManagerTrackHelper on RtcManager {
 
     // Track found, mute/unmute it.
     if (track != null) {
-      if (enabled &&
-          track is RtcLocalScreenShareTrack &&
-          !track.compareScreenShareMode(constraints)) {
+      if (enabled && track is RtcLocalScreenShareTrack) {
+        // Always create a new screen share track when enabling screen sharing.
+        // This ensures correct handling of constraints on iOS and supports selecting different screens on web and desktop platforms.
         return _createAndPublishTrack(
           trackType: trackType,
           constraints: constraints,
@@ -1281,9 +1406,11 @@ extension RtcManagerTrackHelper on RtcManager {
       }
 
       final screenShareTrackResult = await createScreenShareTrack(
-        constraints: (constraints ?? const ScreenShareConstraints())
-            as ScreenShareConstraints,
+        constraints:
+            (constraints ?? const ScreenShareConstraints())
+                as ScreenShareConstraints,
       );
+
       return screenShareTrackResult.fold(
         success: (it) => publishVideoTrack(track: it.data),
         failure: (it) => it,
@@ -1292,6 +1419,30 @@ extension RtcManagerTrackHelper on RtcManager {
 
     _logger.e(() => 'Unsupported trackType $trackType');
     return Result.error('Unsupported trackType $trackType');
+  }
+
+  Future<T> awaitNativeWebRtcEvent<T extends NativeWebRtcEvent>() {
+    return RtcMediaDeviceNotifier.instance
+        .nativeWebRtcEventsStream()
+        .whereType<T>()
+        .take(1)
+        .first;
+  }
+
+  void _startListeningToScreenShareStarted(
+    RtcLocalTrack<ScreenShareConstraints> track,
+  ) {
+    _screenSharingStartedSubscription?.cancel();
+    _screenSharingStartedSubscription = RtcMediaDeviceNotifier.instance
+        .nativeWebRtcEventsStream()
+        .whereType<ScreenSharingStartedEvent>()
+        .listen((event) async {
+          _logger.i(() => '[ScreenSharingStartedEvent] received: $event');
+
+          await publishVideoTrack(
+            track: track,
+          );
+        });
   }
 
   Future<Result<None>> setAppleAudioConfiguration({

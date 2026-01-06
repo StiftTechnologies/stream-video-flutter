@@ -1,3 +1,133 @@
+## 1.2.2
+* Sync version with `stream_video_flutter` 1.2.2
+
+## 1.2.1
+* Sync version with `stream_video_flutter` 1.2.1
+
+## 1.2.0
+* Sync version with `stream_video_flutter` 1.2.0
+
+## 1.1.0
+
+### ⚡ Performance
+
+* Improved `call.join()` performance - reduced join time by optimizing WebRTC setup and deferring non-critical operations.
+* Improved SFU allocation reliability.
+
+## 1.0.2
+
+🐞 Fixed
+* Fixed incoming call timeout handling.
+  - Use `streamVideo.observeCoreRingingEventsForBackground()` instead of `streamVideo.observeCallDeclinedRingingEvent()` in `firebaseMessagingBackgroundHandler` to support all necessary events.
+
+* Improved SFU stats implementation.
+
+## 1.0.1
+
+### ✅ Added
+* Added support for changing the camera target resolution during an ongoing call using the `call.setCameraTargetResolution()` method.
+
+## 1.0.0
+
+### 🚧 Breaking changes
+
+#### CallKit/Ringing
+In this release, we removed the dependency on `flutter_callkit_incoming`, which introduces breaking changes in the CallKit and ringing functionality:
+
+* **API renames and type changes**
+    - `onCallKitEvent` is now `onRingingEvent`
+    - `observeCoreCallKitEvents` is now `observeCoreRingingEvents`
+    - `observeCallAcceptCallKitEvent` is now `observeCallAcceptRingingEvent`
+    - `observeCallDeclinedCallKitEvent` is now `observeCallDeclinedRingingEvent`
+    - `observeCallEndedCallKitEvent` is now `observeCallEndedRingingEvent`
+    - The `CallKitEvent` type is now `RingingEvent`
+
+#### Deprecated members
+
+- Removed deprecated APIs and parameters. Migrate as follows:
+  - `StreamVideo.muteVideoWhenInBackground` → `StreamVideo.options.muteVideoWhenInBackground`
+  - `StreamVideo.muteAudioWhenInBackground` → `StreamVideo.options.muteAudioWhenInBackground`
+  - Default `StreamCallType()` constructor → `StreamCallType.defaultType()`
+  - `Call.setParticipantPinned()` → `Call.setParticipantPinnedLocally()` (local-only pin)
+  - Removed deprecated `startRtmpBroadcasts` parameter from `Call.goLive()`
+  - Removed `localParticipant` parameter from `AddReactionOption` constructor
+  - Removed multiple deprecated builder callbacks in favor of [callbacks that don't provide the state object](https://github.com/GetStream/stream-video-flutter/pull/983); corresponding state object parameters in affected widgets have been removed.
+  - Deprecated `androidAudioAttributesUsageType` and `androidAudioAttributesContentType` parameters in `RtcMediaDeviceNotifier.handleCallInterruptionCallbacks()`
+---
+
+### ✅ Added
+- Added `Call.ring()` to ring specific members of an existing call. Example: `call.ring(userIds: ['<userId>'], video: true)`. Sends a ringing/VoIP push to the users’ devices. Users must already be members - use `call.addMembers()` first if needed.
+- Added `RtcMediaDeviceNotifier.pauseAudioPlayout()` / `RtcMediaDeviceNotifier.resumeAudioPlayout()` to mute and restore remote playback with platform-specific handling for iOS/macOS and Android.
+- [Android] Enhanced interruption handling via `RtcMediaDeviceNotifier.handleCallInterruptionCallbacks()`.
+- [Android] Added `RtcMediaDeviceNotifier.regainAndroidAudioFocus()` to request audio focus when it was lost without automatic regain.
+
+### 🐞 Fixed
+- Resolved an issue that could cause the StreamVideo instance to be disposed prematurely before ringing events were fully processed when handling ringing notifications in the terminated state.
+
+## 0.11.2
+
+🐞 Fixed
+- [Web] Fixed setting input audio/video device passed by `CallConnectOptions` as well as switching those devices during the call.
+- [Web] Fixed changing the output audio device during the call.
+- [Android/iOS] Fixed an issue where screen sharing was not stopped correctly when canceled via the system UI on Android or iOS.
+- [iOS] Improved broadcast extension handling — the app now waits for the broadcast picker selection before actually starting screen sharing.
+- Resolved an issue where the camera wouldn’t flip correctly if the back camera was selected initially.
+- Fixed an issue where `callMembers` collection wasn't reflecting the actual members list after starting the call session.
+
+✅ Added
+- [Web] Added `checkIfAudioOutputChangeSupported()` to the `Call` class to check whether the browser supports changing the audio output device.
+
+## 0.11.1
+
+🔄 Changed
+- The `byParticipantSource` participant sorting now accepts a list of sources. The default sorting for `speaker` and `livestream` presets now include other ingress sources.
+
+## 0.11.0
+
+🚧 Build breaking changes
+
+> **Important:** This release includes breaking changes for Android development.
+> 
+> **Android Requirements:**
+> - Minimum compileSDK 36
+> - Android Gradle Plugin >=8.12.1
+> - Gradle wrapper >=8.13
+> - Kotlin 2.2.0
+
+* Updated minimum Flutter version to 3.32.0
+* Updated minimum supported Dart SDK version to 3.8.0
+
+🚧 Breaking changes
+
+* **`Call.stats` payload structure changed**
+  - **Before:** `({ CallStats publisherStats, CallStats subscriberStats })`
+  - **Now:** `({ PeerConnectionStatsBundle publisherStatsBundle, PeerConnectionStatsBundle subscriberStatsBundle })`
+  - The record field names and element types have changed to provide more detailed WebRTC statistics
+
+* **Stats-related fields removed from `CallState`**
+  - Removed: `publisherStats`, `subscriberStats`, `latencyHistory`
+    - For periodic WebRTC stats: Use `call.stats` stream
+    - For latest aggregated metrics: Use `call.statsReporter?.currentMetrics`
+
+* **Dependency updates**
+  - Updated most dependencies to their latest versions to ensure compatibility and security
+
+✅ Added
+
+- New `call.statsReporter` property provides access to `currentMetrics`
+- Battery level tracking now available via `call.statsReporter?.currentMetrics`
+- Device thermal status monitoring for better call quality optimization
+
+🔄 Changed
+
+- `Call.stats` record field names and types updated as noted in breaking changes section
+
+🐞 Fixed
+
+- Fixed leave call operation failures when parsing custom data encounters issues
+- [Android] Fixed custom Android audio configuration application for participants joining calls
+- [Android] Fixed video rendering issue where background textures were incorrectly blended with video content on devices using Impeller rendering engine
+
 ## 0.10.4
 
 ✅ Added

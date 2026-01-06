@@ -1,5 +1,4 @@
 import '../models/call_participant_state.dart';
-import '../sfu/data/models/sfu_participant_source.dart';
 import 'call_participant_state_sorting.dart';
 
 mixin CallParticipantSortingPresets {
@@ -21,19 +20,33 @@ mixin CallParticipantSortingPresets {
     dominantSpeaker,
     ifInvisibleBy(speaking),
     ifInvisibleBy(byReactionType('raised-hand')),
+    ifInvisibleBy(byVideoIngressSource()),
     ifInvisibleBy(publishingVideo),
     ifInvisibleBy(publishingAudio),
   ]);
 
   /// The sorting preset for livestreams and audio rooms.
-  static final livestreamOrAudioRoom =
-      combineComparators<CallParticipantState>([
-    ifInvisibleBy(dominantSpeaker),
-    ifInvisibleBy(speaking),
-    ifInvisibleBy(byReactionType('raised-hand')),
-    ifInvisibleBy(byParticipantSource(SfuParticipantSource.rtmp)),
-    ifInvisibleBy(publishingVideo),
-    ifInvisibleBy(publishingAudio),
-    byRole(['admin', 'host', 'speaker']),
+  static final livestreamOrAudioRoom = combineComparators<CallParticipantState>(
+    [
+      ifInvisibleBy(dominantSpeaker),
+      ifInvisibleBy(speaking),
+      ifInvisibleBy(byReactionType('raised-hand')),
+      ifInvisibleBy(byVideoIngressSource()),
+      ifInvisibleBy(publishingVideo),
+      ifInvisibleBy(publishingAudio),
+      byRole(['admin', 'host', 'speaker']),
+    ],
+  );
+
+  /// The sorting preset for PiP layout.
+  /// For picture in picture we don't rely on visibility as it's a separate view not related to the main one.
+  static final pictureInPicture = combineComparators<CallParticipantState>([
+    pinned,
+    screenSharing,
+    dominantSpeaker,
+    speaking,
+    byVideoIngressSource(),
+    publishingVideo,
+    publishingAudio,
   ]);
 }

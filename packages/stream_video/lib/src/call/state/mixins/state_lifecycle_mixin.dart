@@ -63,9 +63,6 @@ mixin StateLifecycleMixin on StateNotifier<CallState> {
         DisconnectReason.ended(),
       ),
       sessionId: '',
-      localStats: LocalStats.empty(),
-      publisherStats: PeerConnectionStats.empty(),
-      subscriberStats: PeerConnectionStats.empty(),
     );
   }
 
@@ -91,7 +88,8 @@ mixin StateLifecycleMixin on StateNotifier<CallState> {
       updatedAt: data.metadata.details.updatedAt,
       startsAt: data.metadata.details.startsAt,
       endedAt: data.metadata.details.endedAt,
-      startedAt: data.metadata.session.startedAt ??
+      startedAt:
+          data.metadata.session.startedAt ??
           data.metadata.session.liveStartedAt,
       createdByUser: data.metadata.details.createdBy,
       custom: data.metadata.details.custom,
@@ -113,18 +111,16 @@ mixin StateLifecycleMixin on StateNotifier<CallState> {
   }) {
     _logWithState('lifecycleCallCreated', 'ringing: $ringing');
 
-    state = state
-        .copyFromMetadata(
-          data.metadata,
-        )
-        .copyWith(
-          status: data.toCallStatus(state: state, ringing: ringing),
-          callParticipants: data.metadata.toCallParticipants(state),
-          isRingingFlow: ringing,
-          audioOutputDevice: callConnectOptions.audioOutputDevice,
-          audioInputDevice: callConnectOptions.audioInputDevice,
-          videoInputDevice: callConnectOptions.videoInputDevice,
-        );
+    final newState = state.copyFromMetadata(data.metadata);
+
+    state = newState.copyWith(
+      status: data.toCallStatus(state: newState, ringing: ringing),
+      callParticipants: data.metadata.toCallParticipants(newState),
+      isRingingFlow: ringing,
+      audioOutputDevice: callConnectOptions.audioOutputDevice,
+      audioInputDevice: callConnectOptions.audioInputDevice,
+      videoInputDevice: callConnectOptions.videoInputDevice,
+    );
   }
 
   void lifecycleCallRinging(
@@ -132,16 +128,14 @@ mixin StateLifecycleMixin on StateNotifier<CallState> {
   ) {
     _logWithState('lifecycleCallRinging');
 
-    state = state
-        .copyFromMetadata(
-          data.metadata,
-        )
-        .copyWith(
-          status: data.toCallStatus(state: state),
-          isRingingFlow: data.ringing,
-          ownCapabilities: data.metadata.details.ownCapabilities.toList(),
-          callParticipants: data.metadata.toCallParticipants(state),
-        );
+    final newState = state.copyFromMetadata(data.metadata);
+
+    state = newState.copyWith(
+      status: data.toCallStatus(state: newState),
+      isRingingFlow: data.ringing,
+      ownCapabilities: data.metadata.details.ownCapabilities.toList(),
+      callParticipants: data.metadata.toCallParticipants(newState),
+    );
   }
 
   void lifecycleCallJoining() {
@@ -159,18 +153,16 @@ mixin StateLifecycleMixin on StateNotifier<CallState> {
     final status = state.status.isJoining ? CallStatus.joined() : state.status;
     _logWithState('lifecycleCallJoined', 'newStatus: $status');
 
-    state = state
-        .copyFromMetadata(
-          data.metadata,
-        )
-        .copyWith(
-          status: status,
-          ownCapabilities: data.metadata.details.ownCapabilities.toList(),
-          callParticipants: data.metadata.toCallParticipants(state),
-          audioOutputDevice: callConnectOptions?.audioOutputDevice,
-          audioInputDevice: callConnectOptions?.audioInputDevice,
-          videoInputDevice: callConnectOptions?.videoInputDevice,
-        );
+    final newState = state.copyFromMetadata(data.metadata);
+
+    state = newState.copyWith(
+      status: status,
+      ownCapabilities: data.metadata.details.ownCapabilities.toList(),
+      callParticipants: data.metadata.toCallParticipants(newState),
+      audioOutputDevice: callConnectOptions?.audioOutputDevice,
+      audioInputDevice: callConnectOptions?.audioInputDevice,
+      videoInputDevice: callConnectOptions?.videoInputDevice,
+    );
   }
 
   void lifecycleCallReconnectingFailed() {
@@ -201,9 +193,6 @@ mixin StateLifecycleMixin on StateNotifier<CallState> {
       ),
       sessionId: '',
       callParticipants: const [],
-      localStats: LocalStats.empty(),
-      publisherStats: PeerConnectionStats.empty(),
-      subscriberStats: PeerConnectionStats.empty(),
     );
   }
 
@@ -231,12 +220,10 @@ mixin StateLifecycleMixin on StateNotifier<CallState> {
 
   void lifecycleCallSessionStart({
     required String sessionId,
-    LocalStats? localStats,
   }) {
     _logWithState('lifecycleCallSessionStart');
     state = state.copyWith(
       sessionId: sessionId,
-      localStats: localStats,
     );
   }
 
@@ -244,18 +231,6 @@ mixin StateLifecycleMixin on StateNotifier<CallState> {
     _logWithState('lifecycleCallConnected');
     state = state.copyWith(
       status: CallStatus.connected(),
-    );
-  }
-
-  void lifecycleCallStats({
-    required List<int> latencyHistory,
-    PeerConnectionStats? publisherStats,
-    PeerConnectionStats? subscriberStats,
-  }) {
-    state = state.copyWith(
-      publisherStats: publisherStats,
-      subscriberStats: subscriberStats,
-      latencyHistory: latencyHistory,
     );
   }
 

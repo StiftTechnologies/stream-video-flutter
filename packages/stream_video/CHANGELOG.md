@@ -1,13 +1,17 @@
-## Upcoming
+## 1.2.3
+
+### ⚡ Performance
+* Improved `call.leave()` performance
 
 ### 🐞 Fixed
-
+* Fixed race condition where remote tracks could arrive before participant join events, causing track state to be lost.
 * Improved reconnection reliability:
   * Added exponential backoff with jitter to fast reconnect attempts.
   * Fixed fast reconnect deadline check to correctly trigger fallback to rejoin.
   * Fixed network availability verification during subsequent fast reconnect attempts.
   * Added `reconnectReason` to reconnect details for sfu logs.
   * Fixed race condition where automatic ICE restart could interfere with fast reconnect, causing subscriber video to not recover.
+* Fixed iOS audio session not being released when leaving a call, which prevented other audio packages from using the microphone.
 
 ## 1.2.2
 * Sync version with `stream_video_flutter` 1.2.2

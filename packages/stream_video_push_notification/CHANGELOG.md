@@ -1,3 +1,13 @@
+## 1.2.3
+
+### ✅ Added
+* Added `includesCallsInRecents` to iOS push configuration to control whether CallKit calls appear in Recents.
+
+### 🐞 Fixed
+* [iOS] Fixed CallKit event suppression to avoid repeated mute toggle loops.
+* [Android] Fixed issues when accepting incoming calls from detached state (app exited via back button).
+* [Android] Fixed incoming call notifications not showing when the app is in a detached state (e.g., after pressing the back button).
+
 ## 1.2.2
 * Sync version with `stream_video_flutter` 1.2.2
 

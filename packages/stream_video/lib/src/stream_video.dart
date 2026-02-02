@@ -188,16 +188,16 @@ class StreamVideo extends Disposable {
     _state.user.value = user;
 
     if (CurrentPlatform.isAndroid || CurrentPlatform.isIos) {
-      unawaited(
-        rtc.WebRTC.initialize(
-          options: {
-            if (CurrentPlatform.isAndroid &&
-                options.androidAudioConfiguration != null)
-              'androidAudioConfiguration': options.androidAudioConfiguration!
-                  .toMap(),
-          },
-        ),
-      );
+      rtc.WebRTC.initialize(
+        options: {
+          if (CurrentPlatform.isAndroid &&
+              options.androidAudioConfiguration != null)
+            'androidAudioConfiguration': options.androidAudioConfiguration!
+                .toMap(),
+        },
+      ).then((_) {
+        webrtcInitializationCompleter.complete();
+      });
     }
 
     final tokenProvider = switch (user.type) {
@@ -297,6 +297,9 @@ class StreamVideo extends Disposable {
   final MutableClientState _state;
 
   StreamVideoOptions get options => _options;
+
+  @internal
+  Completer<void> webrtcInitializationCompleter = Completer();
 
   final _tokenManager = TokenManager();
   final _subscriptions = Subscriptions();
@@ -557,8 +560,13 @@ class StreamVideo extends Disposable {
     _logger.d(() => '[onAppState] state: $state');
     try {
       final activeCalls = _state.activeCalls.value;
+      _state.appLifecycleState.value = state;
 
       if (state.isPaused) {
+        for (final activeCall in activeCalls) {
+          activeCall.traceSessionLog('device.stateChange', 'paused');
+        }
+
         // Handle app paused state
         if (activeCalls.isEmpty &&
             !_options.keepConnectionsAliveWhenInBackground) {
@@ -567,8 +575,6 @@ class StreamVideo extends Disposable {
           await _client.closeConnection();
         } else if (activeCalls.isNotEmpty) {
           for (final activeCall in activeCalls) {
-            activeCall.traceSessionLog('device.stateChange', 'paused');
-
             final callState = activeCall.state.value;
             final isVideoEnabled =
                 callState.localParticipant?.isVideoEnabled ?? false;
@@ -860,11 +866,18 @@ class StreamVideo extends Disposable {
     CallPreferences? acceptCallPreferences,
   }) {
     return onRingingEvent<ActionCallAccept>(
-      (event) => _onCallAccept(
-        event,
-        onCallAccepted: onCallAccepted,
-        callPreferences: acceptCallPreferences,
-      ),
+      (event) {
+        // Ignore call accept event when app is in detached state on Android.
+        // The call flow should be handled by consuming the call like in the terminated state.
+        if (!CurrentPlatform.isAndroid ||
+            _state.appLifecycleState.value != LifecycleState.detached) {
+          _onCallAccept(
+            event,
+            onCallAccepted: onCallAccepted,
+            callPreferences: acceptCallPreferences,
+          );
+        }
+      },
     );
   }
 

@@ -29,6 +29,7 @@ import '../models/models.dart';
 import '../platform_detector/platform_detector.dart';
 import '../retry/retry_policy.dart';
 import '../sfu/data/events/sfu_events.dart';
+import '../sfu/data/models/sfu_audio_bitrate.dart';
 import '../sfu/data/models/sfu_client_capability.dart';
 import '../sfu/data/models/sfu_error.dart';
 import '../sfu/data/models/sfu_track_type.dart';
@@ -296,6 +297,9 @@ class Call {
 
   final Map<String, Timer> _reactionTimers = {};
   final Map<String, Timer> _captionsTimers = {};
+  Timer? _videoModerationTimer;
+  void Function()? _onModerationBlurApply;
+  void Function()? _onModerationBlurClear;
   final List<CancelableOperation<void>> _sfuStatsTimers = [];
   final Set<SfuClientCapability> _sfuClientCapabilities = {
     SfuClientCapability.subscriberVideoPause, // on by default
@@ -623,9 +627,77 @@ class Call {
           event.metadata,
           updateMembers: false,
         );
+      case StreamCallModerationWarningEvent _:
+        return _handleModerationWarningEvent(event);
+      case StreamCallModerationBlurEvent _:
+        return _handleModerationBlurEvent(event);
       default:
         break;
     }
+  }
+
+  void _handleModerationWarningEvent(
+    StreamCallModerationWarningEvent event,
+  ) {
+    final config = state.value.preferences.videoModerationConfig;
+    if (config.isDisabled || event.userId != _streamVideo.currentUser.id) {
+      return;
+    }
+
+    config.onWarning?.call(event.message);
+  }
+
+  Future<void> _handleModerationBlurEvent(
+    StreamCallModerationBlurEvent event,
+  ) async {
+    final config = state.value.preferences.videoModerationConfig;
+    if (config.isDisabled || event.userId != _streamVideo.currentUser.id) {
+      return;
+    }
+
+    _stateManager.coordinatorCallModerationBlur(event.userId);
+
+    _videoModerationTimer?.cancel();
+    _videoModerationTimer = null;
+    if (config.duration != null) {
+      _videoModerationTimer = Timer(config.duration!, clearModerationBlur);
+    }
+
+    if (config.muteAudio) await setMicrophoneEnabled(enabled: false);
+    if (config.muteVideo) await setCameraEnabled(enabled: false);
+    if (config.applyBlur) _onModerationBlurApply?.call();
+    config.onApply?.call();
+  }
+
+  /// Clears the moderation action, restoring normal operation.
+  ///
+  /// When [VideoModerationConfig.muteAudio] / [VideoModerationConfig.muteVideo]
+  /// were active, re-enabling mic/camera is allowed again but they stay off
+  /// until the user manually re-enables them.
+  void clearModerationBlur() {
+    _videoModerationTimer?.cancel();
+    _videoModerationTimer = null;
+
+    if (!state.value.isVideoModerated) return;
+
+    final config = state.value.preferences.videoModerationConfig;
+    _stateManager.clearModerationBlur();
+
+    if (config.applyBlur) _onModerationBlurClear?.call();
+    config.onClear?.call();
+  }
+
+  /// Registers handlers for the native blur effect pipeline.
+  ///
+  /// Called automatically by `StreamVideoEffectsManager` from
+  /// `stream_video_filters` when [VideoModerationConfig.applyBlur] is true.
+  @internal
+  void setModerationBlurEffectHandlers({
+    required void Function() onApply,
+    required void Function() onClear,
+  }) {
+    _onModerationBlurApply = onApply;
+    _onModerationBlurClear = onClear;
   }
 
   @internal
@@ -719,7 +791,7 @@ class Call {
   }
 
   /// Ends the call for all participants.
-  Future<Result<None>> end() async {
+  Future<Result<None>> end({String? reason}) async {
     final state = this.state.value;
     _logger.d(() => '[end] status: ${state.status}');
 
@@ -728,7 +800,7 @@ class Call {
       return Result.error('invalid status: ${state.status}');
     }
 
-    _session?.leave(reason: 'user is ending the call');
+    _session?.leave(reason: reason ?? 'user is ending the call');
     await _clear('end');
 
     final result = await _permissionsManager.endCall();
@@ -1246,6 +1318,8 @@ class Call {
   /// - [broadcasting]: Broadcasting settings for the call.
   /// - [session]: Session settings for the call.
   /// - [frameRecording]: Frame recording settings for the call.
+  /// - [individualRecording]: Individual recording settings for the call.
+  /// - [rawRecording]: Raw recording settings for the call.
   Future<Result<CallMetadata>> update({
     Map<String, Object>? custom,
     DateTime? startsAt,
@@ -1261,6 +1335,8 @@ class Call {
     StreamBroadcastingSettings? broadcasting,
     StreamSessionSettings? session,
     StreamFrameRecordingSettings? frameRecording,
+    StreamIndividualRecordingSettings? individualRecording,
+    StreamRawRecordingSettings? rawRecording,
     StreamIngressSettings? ingress,
   }) {
     return _coordinatorClient.updateCall(
@@ -1279,6 +1355,8 @@ class Call {
       broadcasting: broadcasting,
       session: session,
       frameRecording: frameRecording,
+      individualRecording: individualRecording,
+      rawRecording: rawRecording,
       ingress: ingress,
     );
   }
@@ -1398,7 +1476,17 @@ class Call {
           callParticipants.first.userId == _streamVideo.currentUser.id &&
           state.value.isRingingFlow &&
           _stateManager.callState.preferences.dropIfAloneInRingingFlow) {
-        await leave(reason: DisconnectReason.lastParticipantLeft());
+        final endResult = await end(
+          reason: 'last participant left the call (ringing flow)',
+        );
+
+        if (endResult.isFailure) {
+          _logger.w(
+            () =>
+                '[onSfuEvent] auto-end failed while alone in ringing flow: $endResult',
+          );
+          await leave(reason: DisconnectReason.lastParticipantLeft());
+        }
       }
     } else if (sfuEvent is SfuHealthCheckResponseEvent) {
       _stateManager.setParticipantsCount(
@@ -1845,6 +1933,8 @@ class Call {
     ]) {
       timer.cancel();
     }
+    _videoModerationTimer?.cancel();
+    _videoModerationTimer = null;
 
     for (final operation in _sfuStatsTimers) {
       await operation.cancel();
@@ -2022,6 +2112,7 @@ class Call {
       if (CurrentPlatform.isIos) {
         await _session?.rtcManager?.setAppleAudioConfiguration(
           speakerOn: _connectOptions.speakerDefaultOn,
+          policy: _streamVideo.options.audioConfigurationPolicy,
         );
       }
     }
@@ -2392,6 +2483,8 @@ class Call {
   /// - [broadcasting]: Broadcasting settings for the call.
   /// - [session]: Session settings for the call.
   /// - [frameRecording]: Frame recording settings for the call.
+  /// - [individualRecording]: Individual recording settings for the call.
+  /// - [rawRecording]: Raw recording settings for the call.
   Future<Result<CallReceivedOrCreatedData>> getOrCreate({
     List<String> memberIds = const [],
     List<MemberRequest> members = const [],
@@ -2415,6 +2508,8 @@ class Call {
     StreamSessionSettings? session,
     StreamIngressSettings? ingress,
     StreamFrameRecordingSettings? frameRecording,
+    StreamIndividualRecordingSettings? individualRecording,
+    StreamRawRecordingSettings? rawRecording,
     Map<String, Object> custom = const {},
   }) async {
     final settingsOverride = CallSettingsRequest(
@@ -2431,6 +2526,8 @@ class Call {
       session: session?.toOpenDto(),
       ingress: ingress?.toOpenDto(),
       frameRecording: frameRecording?.toOpenDto(),
+      individualRecording: individualRecording?.toOpenDto(),
+      rawRecording: rawRecording?.toOpenDto(),
     );
 
     final aggregatedMembers = [
@@ -2530,9 +2627,11 @@ class Call {
   }
 
   Future<Result<None>> startRecording({
+    RecordingType recordingType = RecordingType.composite,
     String? recordingExternalStorage,
   }) async {
     final result = await _permissionsManager.startRecording(
+      recordingType: recordingType,
       recordingExternalStorage: recordingExternalStorage,
     );
 
@@ -2547,8 +2646,12 @@ class Call {
     return _permissionsManager.listRecordings();
   }
 
-  Future<Result<None>> stopRecording() async {
-    final result = await _permissionsManager.stopRecording();
+  Future<Result<None>> stopRecording({
+    RecordingType recordingType = RecordingType.composite,
+  }) async {
+    final result = await _permissionsManager.stopRecording(
+      recordingType: recordingType,
+    );
 
     if (result.isSuccess) {
       _stateManager.setCallRecording(isRecording: false);
@@ -2912,6 +3015,12 @@ class Call {
     required bool enabled,
     CameraConstraints? constraints,
   }) async {
+    if (enabled &&
+        state.value.isVideoModerated &&
+        state.value.preferences.videoModerationConfig.muteVideo) {
+      _logger.w(() => '[setCameraEnabled] blocked by video moderation');
+      return Result.error('Blocked by video moderation');
+    }
     if (enabled && !hasPermission(CallPermission.sendVideo)) {
       return Result.error('Missing permission to send video');
     }
@@ -2988,23 +3097,14 @@ class Call {
     required bool enabled,
     AudioConstraints? constraints,
   }) async {
+    if (enabled &&
+        state.value.isVideoModerated &&
+        state.value.preferences.videoModerationConfig.muteAudio) {
+      _logger.w(() => '[setMicrophoneEnabled] blocked by video moderation');
+      return Result.error('Blocked by video moderation');
+    }
     if (enabled && !hasPermission(CallPermission.sendAudio)) {
       return Result.error('Missing permission to send audio');
-    }
-
-    if (enabled && CurrentPlatform.isAndroid) {
-      try {
-        if (_streamVideo.options.androidAudioConfiguration != null) {
-          await rtc.Helper.setAndroidAudioConfiguration(
-            _streamVideo.options.androidAudioConfiguration!,
-          );
-        }
-      } catch (e) {
-        _logger.w(
-          () =>
-              '[setMicrophoneEnabled] Failed to set Android audio configuration: $e',
-        );
-      }
     }
 
     final result =
@@ -3153,6 +3253,43 @@ class Call {
     return result;
   }
 
+  Result<None> setAudioBitrateProfile(SfuAudioBitrateProfile profile) {
+    if (!state.value.settings.audio.hifiAudioEnabled) {
+      return Result.error('High Fidelity audio is not enabled for this call');
+    }
+
+    if (_streamVideo.isAudioProcessorConfigured()) {
+      final disableAudioProcessing =
+          profile == SfuAudioBitrateProfile.musicHighQuality;
+
+      if (disableAudioProcessing) {
+        unawaited(stopAudioProcessing());
+      } else {
+        unawaited(startAudioProcessing());
+      }
+    }
+
+    _stateManager.setAudioBitrateProfile(profile);
+
+    final stereo = profile == SfuAudioBitrateProfile.musicHighQuality;
+
+    // On iOS, toggle stereo playout preference when switching HiFi audio modes.
+    if (CurrentPlatform.isIos) {
+      unawaited(rtc.Helper.setiOSStereoPlayoutPreferred(stereo));
+    }
+
+    _session?.rtcManager?.changeDefaultAudioConstraints(
+      AudioConstraints(
+        noiseSuppression: !stereo,
+        echoCancellation: !stereo,
+        autoGainControl: !stereo,
+        channelCount: stereo ? 2 : 1,
+      ),
+    );
+
+    return const Result.success(none);
+  }
+
   bool checkIfAudioOutputChangeSupported() {
     return rtc_audio.checkIfAudioOutputChangeSupported();
   }
@@ -3212,16 +3349,24 @@ class Call {
   Future<Result<CallMetadata>> goLive({
     bool? startHls,
     bool? startRecording,
+    bool? startCompositeRecording,
+    bool? startIndividualRecording,
+    bool? startRawRecording,
     bool? startTranscription,
     bool? startClosedCaption,
+    String? recordingStorageName,
     String? transcriptionStorageName,
   }) async {
     final result = await _coordinatorClient.goLive(
       callCid: callCid,
       startHls: startHls,
       startRecording: startRecording,
+      startCompositeRecording: startCompositeRecording,
+      startIndividualRecording: startIndividualRecording,
+      startRawRecording: startRawRecording,
       startTranscription: startTranscription,
       startClosedCaption: startClosedCaption,
+      recordingStorageName: recordingStorageName,
       transcriptionStorageName: transcriptionStorageName,
     );
 
@@ -3233,8 +3378,27 @@ class Call {
   }
 
   /// Stops the livestreaming of the call.
-  Future<Result<CallMetadata>> stopLive() async {
-    final result = await _coordinatorClient.stopLive(callCid);
+  Future<Result<CallMetadata>> stopLive({
+    bool? continueClosedCaption,
+    bool? continueCompositeRecording,
+    bool? continueHls,
+    bool? continueIndividualRecording,
+    bool? continueRawRecording,
+    bool? continueRecording,
+    bool? continueRtmpBroadcasts,
+    bool? continueTranscription,
+  }) async {
+    final result = await _coordinatorClient.stopLive(
+      callCid,
+      continueClosedCaption: continueClosedCaption,
+      continueCompositeRecording: continueCompositeRecording,
+      continueHls: continueHls,
+      continueIndividualRecording: continueIndividualRecording,
+      continueRawRecording: continueRawRecording,
+      continueRecording: continueRecording,
+      continueRtmpBroadcasts: continueRtmpBroadcasts,
+      continueTranscription: continueTranscription,
+    );
 
     if (result.isSuccess) {
       _stateManager.setCallLive(isLive: false);

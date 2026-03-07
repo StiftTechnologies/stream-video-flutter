@@ -2,6 +2,7 @@ import 'package:internet_connection_checker_plus/internet_connection_checker_plu
 
 import 'call_client_publish_options.dart';
 import 'health_check_endpoint.dart';
+import 'moderation_blur_config.dart';
 
 abstract class CallPreferences {
   /// The maximum duration to wait when establishing a connection to the call.
@@ -56,6 +57,10 @@ abstract class CallPreferences {
   InternetConnection? get internetConnectionInstance;
   List<HealthCheckEndpoint>? get healthCheckEndpoints;
   Duration get healthCheckInterval;
+  
+  /// Configuration for how the SDK handles call moderation events.
+  /// Defaults to [VideoModerationConfig.disabled].
+  VideoModerationConfig get videoModerationConfig;
 }
 
 class DefaultCallPreferences implements CallPreferences {
@@ -72,6 +77,7 @@ class DefaultCallPreferences implements CallPreferences {
     this.internetConnectionInstance,
     this.healthCheckEndpoints,
     this.healthCheckInterval = const Duration(seconds: 1),
+    this.videoModerationConfig = const VideoModerationConfig.disabled(),
   });
 
   /// The maximum duration to wait when establishing a connection to the call.
@@ -156,4 +162,10 @@ class DefaultCallPreferences implements CallPreferences {
 
   @override
   final Duration healthCheckInterval;
+  
+  /// Configuration for how the SDK handles call moderation events.
+  ///
+  /// Defaults to [VideoModerationConfig.disabled].
+  @override
+  final VideoModerationConfig videoModerationConfig;
 }

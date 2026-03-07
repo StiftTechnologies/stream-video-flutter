@@ -171,6 +171,7 @@ extension CallSettingsExt on open.CallSettingsResponse {
         micDefaultOn: audio.micDefaultOn,
         speakerDefaultOn: audio.speakerDefaultOn,
         noiseCancellation: audio.noiseCancellation?.toSettingsDomain(),
+        hifiAudioEnabled: audio.hifiAudioEnabled,
       ),
       video: StreamVideoSettings(
         accessRequestEnabled: video.accessRequestEnabled,
@@ -211,6 +212,16 @@ extension CallSettingsExt on open.CallSettingsResponse {
         maxDurationSeconds: limits.maxDurationSeconds,
         maxParticipantsExcludeOwner: limits.maxParticipantsExcludeOwner,
         maxParticipantsExcludeRoles: limits.maxParticipantsExcludeRoles,
+      ),
+      individualRecording: StreamIndividualRecordingSettings(
+        mode: IndividualRecordingSettingsMode.fromString(
+          individualRecording.mode.value,
+        ),
+      ),
+      rawRecording: StreamRawRecordingSettings(
+        mode: RawRecordingSettingsMode.fromString(
+          rawRecording.mode.value,
+        ),
       ),
       ingress: ingress?.toSettingsDomain(),
     );

@@ -755,31 +755,49 @@ class StreamVideo extends Disposable {
     final calls = await pushNotificationManager?.activeCalls();
     if (calls == null || calls.isEmpty) return false;
 
+    // Ensure the coordinator WS is connected before proceeding.
+    // During cold start, autoConnect may still be in progress so we need to wait for it to complete.
+    final connectResult = await connect();
+    if (connectResult.isFailure) {
+      _logger.e(
+        () =>
+            '[consumeAndAcceptActiveCall] failed to connect: '
+            '${connectResult.getErrorOrNull()}',
+      );
+      return false;
+    }
+
     final callResult = await consumeIncomingCall(
       uuid: calls.first.uuid!,
       cid: calls.first.callCid!,
       preferences: callPreferences,
     );
 
-    callResult.fold(
-      success: (result) async {
-        final call = result.data;
-        await call.accept();
+    if (callResult.isFailure) {
+      _logger.d(
+        () =>
+            '[consumeAndAcceptActiveCall] error consuming incoming call: '
+            '${callResult.getErrorOrNull()}',
+      );
+      return false;
+    }
 
-        onCallAccepted?.call(call);
+    final call = callResult.getDataOrNull();
+    if (call == null) return false;
 
-        return true;
-      },
-      failure: (error) {
-        _logger.d(
-          () =>
-              '[consumeAndAcceptActiveCall] error consuming incoming call: $error',
-        );
-        return false;
-      },
-    );
+    final acceptResult = await call.accept();
+    if (acceptResult.isFailure) {
+      _logger.d(
+        () =>
+            '[consumeAndAcceptActiveCall] error accepting call: '
+            '${acceptResult.getErrorOrNull()}',
+      );
+      return false;
+    }
 
-    return false;
+    onCallAccepted?.call(call);
+
+    return true;
   }
 
   @Deprecated('Use observeCoreRingingEvents instead.')
@@ -1282,6 +1300,7 @@ Future<String?> _setClientDetails() async {
 
     sfu_models.Device? device;
     sfu_models.Browser? browser;
+    String? webrtcVersion;
 
     var os = sfu_models.OS(name: CurrentPlatform.name);
 
@@ -1295,6 +1314,7 @@ Future<String?> _setClientDetails() async {
       device = sfu_models.Device(
         name: '${deviceInfo.manufacturer} : ${deviceInfo.model}',
       );
+      webrtcVersion = androidWebRTCVersion;
     } else if (CurrentPlatform.isIos) {
       final deviceInfo = await DeviceInfoPlugin().iosInfo;
       os = sfu_models.OS(
@@ -1302,6 +1322,7 @@ Future<String?> _setClientDetails() async {
         version: deviceInfo.systemVersion,
       );
       device = sfu_models.Device(name: deviceInfo.utsname.machine);
+      webrtcVersion = iosWebRTCVersion;
     } else if (CurrentPlatform.isMacOS) {
       final deviceInfo = await DeviceInfoPlugin().macOsInfo;
       os = sfu_models.OS(
@@ -1347,6 +1368,7 @@ Future<String?> _setClientDetails() async {
       os: os,
       device: device,
       browser: browser,
+      webrtcVersion: webrtcVersion,
     );
 
     final deviceName = (device?.name != null && device!.name.isNotEmpty)

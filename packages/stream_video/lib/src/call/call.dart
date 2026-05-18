@@ -13,7 +13,7 @@ import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 import 'package:synchronized/synchronized.dart';
 
 import '../../globals.dart';
-import '../../open_api/video/coordinator/api.dart' hide User;
+import '../../open_api/video/coordinator/api.dart';
 import '../../protobuf/video/sfu/event/events.pb.dart' show ReconnectDetails;
 import '../call_state.dart';
 import '../coordinator/coordinator_client.dart';
@@ -79,6 +79,7 @@ typedef SetOutgoingCall = Future<void> Function(Call?);
 typedef GetActiveCall = Call? Function();
 typedef GetOutgoingCall = Call? Function();
 typedef CallStateSelector<T> = T Function(CallState state);
+typedef VideoDimension = RtcVideoDimension;
 
 const _idState = 1;
 const _idUserId = 2;
@@ -535,9 +536,11 @@ class Call {
         // Notify the client about the permission request.
         return onPermissionRequest?.call(event);
       case StreamCallRejectedEvent _:
-        return _stateManager.coordinatorCallRejected(event);
+        await _handleCoordinatorCallRejected(event);
+        return;
       case StreamCallAcceptedEvent _:
-        return _stateManager.coordinatorCallAccepted(event);
+        await _handleCoordinatorCallAccepted(event);
+        return;
       case StreamCallEndedEvent _:
         return _stateManager.coordinatorCallEnded(event);
       case StreamCallPermissionsUpdatedEvent _:
@@ -566,6 +569,14 @@ class Call {
         return _stateManager.coordinatorCallBroadcastingStopped(event);
       case StreamCallBroadcastingFailedEvent _:
         return _stateManager.coordinatorCallBroadcastingFailed(event);
+      case StreamCallRtmpBroadcastStartedEvent _:
+        return _stateManager.coordinatorCallRtmpBroadcastStarted(event);
+      case StreamCallRtmpBroadcastStoppedEvent _:
+        return _stateManager.coordinatorCallRtmpBroadcastStopped(event);
+      case StreamCallRtmpBroadcastFailedEvent _:
+        return _stateManager.coordinatorCallRtmpBroadcastFailed(event);
+      case StreamCallDeletedEvent _:
+        return _stateManager.coordinatorCallDeleted(event);
       case StreamCallClosedCaptionsEvent _:
         return _handleClosedCaptionEvent(event);
       case StreamCallReactionEvent _:
@@ -634,6 +645,48 @@ class Call {
       default:
         break;
     }
+  }
+
+  Future<void> _handleCoordinatorCallAccepted(
+    StreamCallAcceptedEvent event,
+  ) async {
+    final currentUserId = _stateManager.callState.currentUserId;
+    final status = state.value.status;
+
+    if (event.acceptedByUserId == currentUserId &&
+        status is CallStatusIncoming &&
+        !status.acceptedByMe) {
+      _logger.i(
+        () =>
+            '[onCoordinatorEvent] call accepted on another device, '
+            'rejecting locally with userRespondedElsewhere',
+      );
+      await reject(reason: CallRejectReason.userRespondedElsewhere());
+      return;
+    }
+
+    _stateManager.coordinatorCallAccepted(event);
+  }
+
+  Future<void> _handleCoordinatorCallRejected(
+    StreamCallRejectedEvent event,
+  ) async {
+    final currentUserId = _stateManager.callState.currentUserId;
+    final status = state.value.status;
+
+    if (event.rejectedByUserId == currentUserId &&
+        status is CallStatusIncoming &&
+        !status.acceptedByMe) {
+      _logger.i(
+        () =>
+            '[onCoordinatorEvent] call rejected on another device, '
+            'rejecting locally with userRespondedElsewhere',
+      );
+      await reject(reason: CallRejectReason.userRespondedElsewhere());
+      return;
+    }
+
+    _stateManager.coordinatorCallRejected(event);
   }
 
   void _handleModerationWarningEvent(
@@ -759,6 +812,7 @@ class Call {
       }
     }
 
+    _session?.trace('call.accept', null);
     final result = await _coordinatorClient.acceptCall(cid: state.callCid);
     if (result is Success<None>) {
       _stateManager.lifecycleCallAccepted();
@@ -770,8 +824,9 @@ class Call {
   /// Rejects the incoming call.
   Future<Result<None>> reject({CallRejectReason? reason}) async {
     final state = this.state.value;
-    _logger.i(() => '[reject] state: $state');
+    _logger.i(() => '[reject] reason: $reason');
 
+    _session?.trace('call.reject', reason?.value);
     final result = await _coordinatorClient.rejectCall(
       cid: state.callCid,
       reason: reason?.value,
@@ -814,10 +869,12 @@ class Call {
   ///
   /// - [connectOptions]: optional initial call configuration
   /// - [membersLimit]: Sets the maximum number of members to return as part of the response.
+  /// - [hintHighScaleLivestreamPublisher]: Whether the local user is a high-scale livestream publisher.
   Future<Result<None>> join({
     CallConnectOptions? connectOptions,
     int? membersLimit,
     int maxJoinRetries = 3,
+    bool? hintHighScaleLivestreamPublisher,
   }) async {
     await _init();
 
@@ -872,6 +929,8 @@ class Call {
               connectOptions: connectOptions,
               membersLimit: membersLimit,
               maxJoinRetries: maxJoinRetries,
+              hintHighScaleLivestreamPublisher:
+                  hintHighScaleLivestreamPublisher,
             )
             .asCancelable()
             .storeIn(_idConnect, _cancelables)
@@ -897,6 +956,7 @@ class Call {
     int? membersLimit,
     int maxJoinRetries = 3,
     String? reconnectReason,
+    bool? hintHighScaleLivestreamPublisher,
   }) async {
     if (_callJoinLock.locked) {
       _logger.w(() => '[join] rejected (already joining)');
@@ -916,6 +976,7 @@ class Call {
             sfuToForceExclude: sfuToForceExclude,
             sfusToExclude: List.unmodifiable(sfusToExclude),
             reconnectReason: reconnectReason,
+            hintHighScaleLivestreamPublisher: hintHighScaleLivestreamPublisher,
           ),
         );
 
@@ -1017,6 +1078,7 @@ class Call {
     String? sfuToForceExclude,
     List<String> sfusToExclude = const [],
     String? reconnectReason,
+    bool? hintHighScaleLivestreamPublisher,
   }) async {
     _logger.d(() => '[join] options: $_connectOptions');
     final connectionTimeStopwatch = Stopwatch()..start();
@@ -1063,6 +1125,7 @@ class Call {
       membersLimit: membersLimit,
       forceMigratingFrom: sfuToForceExclude,
       migratingFromList: sfusToExclude,
+      hintHighScaleLivestreamPublisher: hintHighScaleLivestreamPublisher,
     );
 
     if (joinedResult is! Success<CallCredentials>) {
@@ -1223,6 +1286,7 @@ class Call {
     int? membersLimit,
     String? forceMigratingFrom,
     List<String> migratingFromList = const [],
+    bool? hintHighScaleLivestreamPublisher,
   }) async {
     _logger.d(
       () =>
@@ -1260,6 +1324,7 @@ class Call {
         migratingFrom: migratingFrom,
         migratingFromList: effectiveMigratingFromList,
         membersLimit: membersLimit,
+        hintHighScaleLivestreamPublisher: hintHighScaleLivestreamPublisher,
       );
 
       return joinedResult.fold(
@@ -1296,6 +1361,7 @@ class Call {
     List<String> migratingFromList = const [],
     int? membersLimit,
     CallConnectOptions? connectOptions,
+    bool? hintHighScaleLivestreamPublisher,
   }) async {
     _logger.d(
       () =>
@@ -1314,6 +1380,7 @@ class Call {
       migratingFromList: migratingFromList,
       video: video,
       membersLimit: membersLimit,
+      hintHighScaleLivestreamPublisher: hintHighScaleLivestreamPublisher,
     );
 
     if (joinResult is! Success<CoordinatorJoined>) {
@@ -1996,7 +2063,7 @@ class Call {
       }
 
       try {
-        _session?.leave(reason: 'user is leaving the call');
+        _session?.leave(reason: _sfuLeaveReason(reason));
       } finally {
         await _clear('leave');
       }
@@ -2009,6 +2076,28 @@ class Call {
     } finally {
       _leaveCallTriggered = false;
     }
+  }
+
+  String _sfuLeaveReason(DisconnectReason? reason) {
+    if (reason == null) return 'user is leaving the call';
+
+    return switch (reason) {
+      final DisconnectReasonRejected rejected =>
+        'rejected: ${rejected.reason?.value ?? 'unspecified'}',
+      final DisconnectReasonFailure failure => 'failure: ${failure.error}',
+      final DisconnectReasonSfuError sfuError => 'sfu error: ${sfuError.error}',
+      final DisconnectReasonCancelled cancelled =>
+        'cancelled: ${cancelled.byUserId}',
+      DisconnectReasonReplaced _ => 'replaced by another call',
+      DisconnectReasonReconnectionFailed _ => 'reconnection failed',
+      DisconnectReasonLastParticipantLeft _ => 'last participant left',
+      DisconnectReasonCallEnded _ => 'call ended externally',
+      DisconnectReasonEnded _ => 'call ended',
+      DisconnectReasonTimeout _ => 'timeout',
+      DisconnectReasonManuallyClosed _ => 'manually closed',
+      DisconnectReasonBlocked _ => 'blocked',
+      _ => 'user is leaving the call',
+    };
   }
 
   Future<void> _clear(String src) async {
@@ -2901,6 +2990,32 @@ class Call {
     }
 
     return result;
+  }
+
+  /// Starts RTMP broadcasts for the call to the provided [broadcasts]
+  /// destinations.
+  Future<Result<None>> startRtmpBroadcasts({
+    required List<StreamRtmpBroadcastRequest> broadcasts,
+  }) {
+    return _coordinatorClient.startRtmpBroadcasts(
+      state.value.callCid,
+      broadcasts: broadcasts,
+    );
+  }
+
+  /// Stops a single RTMP broadcast identified by [name].
+  Future<Result<None>> stopRtmpBroadcast({required String name}) {
+    return _coordinatorClient.stopRtmpBroadcast(
+      state.value.callCid,
+      name: name,
+    );
+  }
+
+  /// Stops all RTMP broadcasts for this call.
+  Future<Result<None>> stopAllRtmpBroadcasts() {
+    return _coordinatorClient.stopAllRtmpBroadcasts(
+      state.value.callCid,
+    );
   }
 
   /// Allows for the muting of a or group of users as indicated by [userIds].

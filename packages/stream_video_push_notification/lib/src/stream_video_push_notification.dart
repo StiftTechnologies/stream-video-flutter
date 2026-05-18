@@ -63,6 +63,7 @@ class StreamVideoPushNotificationManager implements PushNotificationManager {
           _logger.d(
             () => '[subscribeToEvents] Call ended event: ${event.callCid}',
           );
+          RingingEventBroadcaster().suppressEvent();
           endCallByCid(event.callCid.toString());
         }),
       );
@@ -88,6 +89,7 @@ class StreamVideoPushNotificationManager implements PushNotificationManager {
                   '[subscribeToEvents] No participants left, ending call: ${event.callCid}',
             );
 
+            RingingEventBroadcaster().suppressEvent();
             await endCallByCid(event.callCid.toString());
           }
         }),
@@ -107,6 +109,7 @@ class StreamVideoPushNotificationManager implements PushNotificationManager {
                   '[subscribeToEvents] Call rejected by the current user or call owner, ending call: ${event.callCid}',
             );
 
+            RingingEventBroadcaster().suppressEvent();
             await endCallByCid(event.callCid.toString());
           }
         }),
@@ -548,6 +551,7 @@ CallData _callDataFromJson(Map<String, dynamic> json) {
     callerName: json['callerName'] as String?,
     hasVideo: json['type'] == 1,
     extraData: extraData,
+    isAccepted: json['isAccepted'] as bool? ?? false,
   );
 }
 

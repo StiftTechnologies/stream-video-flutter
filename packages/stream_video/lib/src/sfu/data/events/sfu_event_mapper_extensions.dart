@@ -119,6 +119,7 @@ extension SfuEventMapper on sfu_events.SfuEvent {
         return SfuParticipantJoinedEvent(
           callCid: participantJoined.callCid,
           participant: participantJoined.participant.toDomain(),
+          isPinned: participantJoined.isPinned,
         );
       case sfu_events.SfuEvent_EventPayload.participantLeft:
         return SfuParticipantLeftEvent(
@@ -255,6 +256,7 @@ extension SfuParticipantExtension on sfu_models.Participant {
       userImage: image,
       sessionId: sessionId,
       custom: custom.fields,
+      customData: (custom.toProto3Json() as Map<String, Object?>?) ?? {},
       publishedTracks: publishedTracks
           .map(
             (track) => track.toDomain(),

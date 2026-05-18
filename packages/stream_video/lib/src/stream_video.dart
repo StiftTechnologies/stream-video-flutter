@@ -13,7 +13,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../protobuf/video/sfu/models/models.pb.dart' as sfu_models;
 import '../globals.dart';
-import '../open_api/video/coordinator/api.dart' hide User;
+import '../open_api/video/coordinator/api.dart';
 import 'audio_processing/audio_processor.dart';
 import 'call/call.dart';
 import 'call/call_reject_reason.dart';
@@ -46,6 +46,7 @@ import 'models/call_preferences.dart';
 import 'models/call_received_data.dart';
 import 'models/call_ringing_data.dart';
 import 'models/call_status.dart';
+import 'models/disconnect_reason.dart';
 import 'models/guest_created_data.dart';
 import 'models/push_device.dart';
 import 'models/push_provider.dart';
@@ -752,7 +753,10 @@ class StreamVideo extends Disposable {
     void Function(Call)? onCallAccepted,
     CallPreferences? callPreferences,
   }) async {
-    final calls = await pushNotificationManager?.activeCalls();
+    final allCalls = await pushNotificationManager?.activeCalls();
+
+    // Only consume calls that the user explicitly accepted via the native notification UI.
+    final calls = allCalls?.where((c) => c.isAccepted).toList();
     if (calls == null || calls.isEmpty) return false;
 
     // Ensure the coordinator WS is connected before proceeding.
@@ -994,7 +998,9 @@ class StreamVideo extends Disposable {
     final incomingCall = _state.incomingCall.valueOrNull;
 
     if (activeCall?.callCid.value == cid) {
-      final result = await activeCall?.leave();
+      final result = await activeCall?.leave(
+        reason: DisconnectReason.callEnded(),
+      );
 
       if (result is Failure) {
         _logger.d(() => '[onCallEnded] error leaving call: ${result.error}');
@@ -1003,7 +1009,7 @@ class StreamVideo extends Disposable {
       final status = incomingCall?.state.value.status;
       if (status is CallStatusIncoming && !status.acceptedByMe) {
         final result = await incomingCall?.reject(
-          reason: CallRejectReason.decline(),
+          reason: CallRejectReason.callEnded(),
         );
         if (result is Failure) {
           _logger.d(
@@ -1268,6 +1274,7 @@ CoordinatorClient buildCoordinatorClient({
   streamLog.i(_tag, () => '[buildCoordinatorClient] apiKey: $apiKey');
   return CoordinatorClientRetry(
     retryPolicy: retryPolicy,
+    tokenManager: tokenManager,
     delegate: CoordinatorClientOpenApi(
       apiKey: apiKey,
       tokenManager: tokenManager,

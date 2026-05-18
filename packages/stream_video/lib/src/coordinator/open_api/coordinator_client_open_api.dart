@@ -75,7 +75,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
       getConnectionId: () => _ws?.connectionId,
     ),
   );
-  late final _defaultApi = open.ProductvideoApi(_apiClient);
+  late final _defaultApi = open.ProductVideoApi(_apiClient);
   late final _locationService = LocationService();
 
   @override
@@ -517,6 +517,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
     List<String> migratingFromList = const [],
     bool? video,
     int? membersLimit,
+    bool? hintHighScaleLivestreamPublisher,
   }) async {
     try {
       _logger.d(
@@ -543,6 +544,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
           migratingFrom: migratingFrom,
           migratingFromList: migratingFromList,
           video: video,
+          hintHighScaleLivestreamPublisher: hintHighScaleLivestreamPublisher,
         ),
       );
       _logger.v(() => '[joinCall] completed: $result');
@@ -725,7 +727,10 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
         callCid.type.value,
         callCid.id,
         open.RequestPermissionRequest(
-          permissions: [...permissions.map((e) => e.alias)],
+          permissions: permissions
+              .map((e) => e.toRequestPermissionDomain())
+              .whereType<open.RequestPermissionRequestPermissionsEnum>()
+              .toList(),
         ),
       );
       if (result == null) {
@@ -813,8 +818,18 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
         callCid.id,
         open.UpdateUserPermissionsRequest(
           userId: userId,
-          grantPermissions: [...grantPermissions.map((e) => e.alias)],
-          revokePermissions: [...revokePermissions.map((e) => e.alias)],
+          grantPermissions: grantPermissions
+              .map((e) => e.toGrantPermissionDomain())
+              .whereType<
+                open.UpdateUserPermissionsRequestGrantPermissionsEnum
+              >()
+              .toList(),
+          revokePermissions: revokePermissions
+              .map((e) => e.toRevokePermissionDomain())
+              .whereType<
+                open.UpdateUserPermissionsRequestRevokePermissionsEnum
+              >()
+              .toList(),
         ),
       );
       if (result == null) {
@@ -1060,6 +1075,71 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   }
 
   @override
+  Future<Result<None>> startRtmpBroadcasts(
+    StreamCallCid callCid, {
+    required List<StreamRtmpBroadcastRequest> broadcasts,
+  }) async {
+    try {
+      final connectionResult = await _waitUntilConnected();
+      if (connectionResult is Failure) {
+        _logger.e(() => '[startRtmpBroadcasts] no connection established');
+        return connectionResult;
+      }
+      await _defaultApi.startRTMPBroadcasts(
+        callCid.type.value,
+        callCid.id,
+        open.StartRTMPBroadcastsRequest(
+          broadcasts: broadcasts.map((it) => it.toRequestDomain()).toList(),
+        ),
+      );
+      return const Result.success(none);
+    } catch (e, stk) {
+      return Result.failure(VideoErrors.compose(e, stk));
+    }
+  }
+
+  @override
+  Future<Result<None>> stopRtmpBroadcast(
+    StreamCallCid callCid, {
+    required String name,
+  }) async {
+    try {
+      final connectionResult = await _waitUntilConnected();
+      if (connectionResult is Failure) {
+        _logger.e(() => '[stopRtmpBroadcast] no connection established');
+        return connectionResult;
+      }
+      await _defaultApi.stopRTMPBroadcast(
+        callCid.type.value,
+        callCid.id,
+        name,
+        const <String, Object?>{},
+      );
+      return const Result.success(none);
+    } catch (e, stk) {
+      return Result.failure(VideoErrors.compose(e, stk));
+    }
+  }
+
+  @override
+  Future<Result<None>> stopAllRtmpBroadcasts(StreamCallCid callCid) async {
+    try {
+      final connectionResult = await _waitUntilConnected();
+      if (connectionResult is Failure) {
+        _logger.e(() => '[stopAllRtmpBroadcasts] no connection established');
+        return connectionResult;
+      }
+      await _defaultApi.stopAllRTMPBroadcasts(
+        callCid.type.value,
+        callCid.id,
+      );
+      return const Result.success(none);
+    } catch (e, stk) {
+      return Result.failure(VideoErrors.compose(e, stk));
+    }
+  }
+
+  @override
   Future<Result<CallReaction>> sendReaction({
     required StreamCallCid callCid,
     required String reactionType,
@@ -1075,7 +1155,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
       final result = await _defaultApi.sendVideoReaction(
         callCid.type.value,
         callCid.id,
-        open.SendReactionRequest(
+        open.SendVideoReactionRequest(
           type: reactionType,
           emojiCode: emojiCode,
           custom: custom,
@@ -1484,7 +1564,7 @@ class CoordinatorClientOpenApi extends CoordinatorClient {
   }) async {
     try {
       _logger.d(() => '[loadGuest] id: $id');
-      final defaultApi = open.ProductvideoApi(
+      final defaultApi = open.ProductVideoApi(
         open.ApiClient(
           basePath: _rpcUrl,
           authentication: _Authentication(

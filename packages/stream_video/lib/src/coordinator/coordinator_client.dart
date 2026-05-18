@@ -2,6 +2,7 @@
 
 import '../../open_api/video/coordinator/api.dart' as open;
 import '../models/call_cid.dart';
+import '../models/call_egress.dart';
 import '../models/call_metadata.dart';
 import '../models/call_permission.dart';
 import '../models/call_reaction.dart';
@@ -90,6 +91,7 @@ abstract class CoordinatorClient {
     List<String> migratingFromList = const [],
     bool? video,
     int? membersLimit,
+    bool? hintHighScaleLivestreamPublisher,
   });
 
   Future<Result<List<String>>> ringCall({
@@ -201,6 +203,23 @@ abstract class CoordinatorClient {
 
   /// Stops broadcasting for the call described by the given [callCid].
   Future<Result<None>> stopBroadcasting(StreamCallCid callCid);
+
+  /// Starts RTMP broadcasts to the given [broadcasts] destinations for the
+  /// call described by [callCid].
+  Future<Result<None>> startRtmpBroadcasts(
+    StreamCallCid callCid, {
+    required List<StreamRtmpBroadcastRequest> broadcasts,
+  });
+
+  /// Stops a single RTMP broadcast identified by [name] for the call described
+  /// by [callCid].
+  Future<Result<None>> stopRtmpBroadcast(
+    StreamCallCid callCid, {
+    required String name,
+  });
+
+  /// Stops all RTMP broadcasts for the call described by [callCid].
+  Future<Result<None>> stopAllRtmpBroadcasts(StreamCallCid callCid);
 
   Future<Result<CallReaction>> sendReaction({
     required StreamCallCid callCid,

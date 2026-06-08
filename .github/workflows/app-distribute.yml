@@ -59,6 +59,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1.7.0
+        with:
+          xcode-version: "26.3"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -158,6 +163,15 @@ jobs:
         run: |
           cd dogfooding/android
           bundle exec fastlane android build_and_deploy flavor:${{ env.FLAVOR }}
+
+      - name: Upload AAB artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ env.FLAVOR }}-release-aab
+          path: dogfooding/build/app/outputs/bundle/${{ env.FLAVOR }}Release/app-${{ env.FLAVOR }}-release.aab
+          if-no-files-found: warn
+          retention-days: 14
 
   build_and_deploy_web:
     name: Build and Deploy Dogfooding Web

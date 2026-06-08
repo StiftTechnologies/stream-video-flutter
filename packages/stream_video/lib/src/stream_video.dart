@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:async/async.dart' as async;
 import 'package:collection/collection.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:meta/meta.dart';
@@ -48,6 +49,7 @@ import 'models/call_ringing_data.dart';
 import 'models/call_status.dart';
 import 'models/disconnect_reason.dart';
 import 'models/guest_created_data.dart';
+import 'models/multi_call_audio_policy.dart';
 import 'models/push_device.dart';
 import 'models/push_provider.dart';
 import 'models/queried_calls.dart';
@@ -65,7 +67,6 @@ import 'utils/none.dart';
 import 'utils/result.dart';
 import 'utils/standard.dart';
 import 'utils/subscriptions.dart';
-import 'webrtc/rtc_manager.dart';
 import 'webrtc/rtc_media_device/rtc_media_device_notifier.dart';
 import 'webrtc/sdp/policy/sdp_policy.dart';
 
@@ -131,6 +132,9 @@ class StreamVideo extends Disposable {
     TokenLoader? tokenLoader,
     OnTokenUpdated? onTokenUpdated,
     PNManagerProvider? pushNotificationManagerProvider,
+    @Deprecated(
+      'No longer used, SDPs are now generated lazily per call. This parameter is a no-op and will be removed in a future major release.',
+    )
     bool precacheGenericSdps = true,
   }) {
     final instance = StreamVideo._(
@@ -141,7 +145,6 @@ class StreamVideo extends Disposable {
       tokenLoader: tokenLoader,
       onTokenUpdated: onTokenUpdated,
       pushNotificationManagerProvider: pushNotificationManagerProvider,
-      precacheGenericSdps: precacheGenericSdps,
     );
     return instance;
   }
@@ -154,13 +157,13 @@ class StreamVideo extends Disposable {
     TokenLoader? tokenLoader,
     OnTokenUpdated? onTokenUpdated,
     PNManagerProvider? pushNotificationManagerProvider,
-    bool precacheGenericSdps = true,
   }) : _options = options,
        _state = MutableClientState(user, options) {
     _networkMonitor =
         _options.networkMonitorSettings.internetConnectionInstance ??
         InternetConnection.createInstance(
           checkInterval: _options.networkMonitorSettings.checkInterval,
+          triggerStream: Connectivity().onConnectivityChanged,
           useDefaultOptions:
               _options.networkMonitorSettings.customEndpoints.isEmpty,
           customCheckOptions:
@@ -194,10 +197,6 @@ class StreamVideo extends Disposable {
       RtcMediaDeviceNotifier.instance
           .reinitializeAudioConfiguration(options.audioConfigurationPolicy)
           .then((_) {
-            if (precacheGenericSdps) {
-              unawaited(RtcManager.cacheGenericSdp());
-            }
-
             webrtcInitializationCompleter.complete();
           })
           .onError((_, _) {
@@ -1419,6 +1418,7 @@ class StreamVideoOptions {
     this.keepConnectionsAliveWhenInBackground = false,
     this.networkMonitorSettings = const NetworkMonitorSettings(),
     this.allowMultipleActiveCalls = false,
+    this.multiCallAudioPolicy = MultiCallAudioPolicy.suspendExisting,
     @Deprecated(
       'Use audioConfigurationPolicy instead. This parameter will be removed in the next major release.',
     )
@@ -1450,6 +1450,12 @@ class StreamVideoOptions {
   final bool includeUserDetailsForAutoConnect;
   final bool keepConnectionsAliveWhenInBackground;
   final bool allowMultipleActiveCalls;
+
+  /// Controls automatic audio suspension between calls when
+  /// [allowMultipleActiveCalls] is `true`. Defaults to [MultiCallAudioPolicy.suspendExisting].
+  ///
+  /// Ignored when [allowMultipleActiveCalls] is `false`.
+  final MultiCallAudioPolicy multiCallAudioPolicy;
 
   /// Returns the current [NetworkMonitorSettings].
   final NetworkMonitorSettings networkMonitorSettings;

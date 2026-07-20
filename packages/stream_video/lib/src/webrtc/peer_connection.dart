@@ -5,7 +5,6 @@ import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart' as rtc;
 import '../../protobuf/video/sfu/models/models.pbenum.dart';
 import '../../protobuf/video/sfu/signal_rpc/signal.pb.dart';
 import '../disposable.dart';
-import '../errors/video_error.dart';
 import '../errors/video_error_composer.dart';
 import '../logger/impl/tagged_logger.dart';
 import '../models/call_cid.dart';
@@ -114,6 +113,12 @@ class StreamPeerConnection extends Disposable {
   /// {@macro onTrack}
   OnTrack? onTrack;
 
+  /// Telemetry hook: fires on every raw ICE connection-state change.
+  void Function(rtc.RTCIceConnectionState state)? onIceConnectionStateUpdated;
+
+  /// Telemetry hook: fires on every raw PC connection-state change.
+  void Function(rtc.RTCPeerConnectionState state)? onConnectionStateUpdated;
+
   final _pendingCandidates = <rtc.RTCIceCandidate>[];
 
   /// Attempts to restart ICE on the `RTCPeerConnection`.
@@ -135,16 +140,7 @@ class StreamPeerConnection extends Disposable {
 
     restartIce().then((result) {
       if (result.isFailure) {
-        final error = result.getErrorOrNull();
-        if (error is VideoErrorWithCause && error.cause is SfuError) {
-          final sfuError = error.cause as SfuError;
-          if (sfuError.code == SfuErrorCode.participantSignalLost) {
-            onReconnectionNeeded?.call(this, SfuReconnectionStrategy.fast);
-            return;
-          }
-        }
-
-        onReconnectionNeeded?.call(this, SfuReconnectionStrategy.rejoin);
+        onReconnectionNeeded?.call(this, SfuReconnectionStrategy.fast);
       }
     });
   }
@@ -387,22 +383,28 @@ class StreamPeerConnection extends Disposable {
 
   /// Checks if the `RTCPeerConnection` is healthy.
   /// It checks the ICE connection state and the peer connection state.
-  /// If either state is `failed`, `disconnected`, or `closed`,
-  /// it returns `false`, otherwise it returns `true`.
+  /// A `failed` or `closed` state is considered unhealthy.
   bool isHealthy() {
     const failedStates = {
       rtc.RTCIceConnectionState.RTCIceConnectionStateFailed,
       rtc.RTCIceConnectionState.RTCIceConnectionStateClosed,
-      rtc.RTCIceConnectionState.RTCIceConnectionStateDisconnected,
       rtc.RTCPeerConnectionState.RTCPeerConnectionStateFailed,
       rtc.RTCPeerConnectionState.RTCPeerConnectionStateClosed,
-      rtc.RTCPeerConnectionState.RTCPeerConnectionStateDisconnected,
     };
 
     final iceState = pc.iceConnectionState;
     final connectionState = pc.connectionState;
     return !failedStates.contains(iceState) &&
         !failedStates.contains(connectionState);
+  }
+
+  /// Whether the `RTCPeerConnection` is permanently closed and therefore
+  /// cannot be recovered by an ICE restart / fast reconnect.
+  bool isClosed() {
+    return pc.iceConnectionState ==
+            rtc.RTCIceConnectionState.RTCIceConnectionStateClosed ||
+        pc.connectionState ==
+            rtc.RTCPeerConnectionState.RTCPeerConnectionStateClosed;
   }
 
   void _initRtcCallbacks() {
@@ -473,6 +475,8 @@ class StreamPeerConnection extends Disposable {
   void _onIceConnectionState(rtc.RTCIceConnectionState state) {
     _logger.v(() => '[onIceConnectionState] state: $state');
 
+    onIceConnectionStateUpdated?.call(state);
+
     switch (state) {
       case rtc.RTCIceConnectionState.RTCIceConnectionStateFailed:
         // in the `failed` state, we try to restart ICE immediately
@@ -505,9 +509,11 @@ class StreamPeerConnection extends Disposable {
   }
 
   void _onConnectionState(rtc.RTCPeerConnectionState state) {
+    onConnectionStateUpdated?.call(state);
+
     if (state == rtc.RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
       _logger.w(() => '[onConnectionState] state: $state');
-      onReconnectionNeeded?.call(this, SfuReconnectionStrategy.rejoin);
+      onReconnectionNeeded?.call(this, SfuReconnectionStrategy.fast);
     } else {
       _logger.v(() => '[onConnectionState] state: $state');
     }
@@ -563,6 +569,8 @@ class StreamPeerConnection extends Disposable {
     onReconnectionNeeded = null;
     onIceCandidate = null;
     onTrack = null;
+    onIceConnectionStateUpdated = null;
+    onConnectionStateUpdated = null;
     _pendingCandidates.clear();
     await pc.dispose();
     return await super.dispose();

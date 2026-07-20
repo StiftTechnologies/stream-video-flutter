@@ -36,6 +36,7 @@ import '../sfu/data/models/sfu_track_type.dart';
 import '../shared_emitter.dart';
 import '../state_emitter.dart';
 import '../stream_video.dart';
+import '../telemetry/client_event_types.dart';
 import '../utils/cancelable_operation.dart';
 import '../utils/cancelables.dart';
 import '../utils/extensions.dart';
@@ -67,6 +68,7 @@ import 'session/dynascale_manager.dart';
 import 'state/call_state_notifier.dart';
 import 'stats/sfu_stats_reporter.dart';
 import 'stats/stats_reporter.dart';
+import 'stats/trace_tag.dart';
 
 typedef OnCallPermissionRequest =
     void Function(
@@ -520,6 +522,7 @@ class Call {
             _reconnect(
               SfuReconnectionStrategy.fast,
               reconnectReason: 'network disconnected',
+              triggeredByNetwork: true,
             );
           }
         },
@@ -601,6 +604,19 @@ class Call {
               ),
             ),
           );
+          break;
+        case AudioRouteChangedEvent _:
+          if (!CurrentPlatform.isIos) break;
+
+          final device = event.device;
+          if (state.value.audioOutputDevice?.id.equalsIgnoreCase(device.id) ??
+              false) {
+            break;
+          }
+
+          _connectOptions = connectOptions.copyWith(audioOutputDevice: device);
+          _stateManager.participantSetAudioOutputDevice(device: device);
+          _stateManager.audioOutputSelectedByUser = false;
           break;
         default:
           return;
@@ -898,7 +914,7 @@ class Call {
       }
     }
 
-    _session?.trace('call.accept', null);
+    _session?.trace(TraceTag.callAccept, null);
 
     // Optimistically mark the call as accepted
     _stateManager.lifecycleCallAccepted();
@@ -917,7 +933,7 @@ class Call {
     final state = this.state.value;
     _logger.i(() => '[reject] reason: $reason');
 
-    _session?.trace('call.reject', reason?.value);
+    _session?.trace(TraceTag.callReject, reason?.value);
     final result = await _coordinatorClient.rejectCall(
       cid: state.callCid,
       reason: reason?.value,
@@ -1027,6 +1043,11 @@ class Call {
     }
 
     await _streamVideo.state.setActiveCall(this);
+
+    _streamVideo.clientEventReporter
+      ..registerCall(callCid)
+      ..reportEvent(callCid, ClientEventStage.joinInitiated);
+
     final result =
         await _join(
               connectOptions: connectOptions,
@@ -1081,6 +1102,7 @@ class Call {
             sfusToExclude: List.unmodifiable(sfusToExclude),
             reconnectReason: reconnectReason,
             hintHighScaleLivestreamPublisher: hintHighScaleLivestreamPublisher,
+            joinAttempt: attempt,
           ),
         );
 
@@ -1127,7 +1149,7 @@ class Call {
                     '[join] $sfuMigrateReason for SFU: $sfuName, migrating...',
               );
 
-              _session?.trace('call_join_migrate', {
+              _session?.trace(TraceTag.callJoinMigrate, {
                 'migrateFrom': sfuName,
                 'reason': sfuMigrateReason,
               });
@@ -1178,6 +1200,13 @@ class Call {
         SfuReconnectionStrategy.disconnect;
   }
 
+  /// Retry count attached to client-event stage completions.
+  int _clientEventRetryCount(int joinAttempt) {
+    return _reconnectStrategy == SfuReconnectionStrategy.unspecified
+        ? joinAttempt
+        : _reconnectAttempts;
+  }
+
   Future<Result<None>> _doJoin({
     CallConnectOptions? connectOptions,
     int? membersLimit,
@@ -1185,6 +1214,7 @@ class Call {
     List<String> sfusToExclude = const [],
     String? reconnectReason,
     bool? hintHighScaleLivestreamPublisher,
+    int joinAttempt = 0,
   }) async {
     _logger.d(() => '[join] options: $_connectOptions');
     final connectionTimeStopwatch = Stopwatch()..start();
@@ -1226,12 +1256,15 @@ class Call {
       strategy: _reconnectStrategy,
     );
 
+    final clientEventRetryCount = _clientEventRetryCount(joinAttempt);
+
     final joinedResult = await _joinIfNeeded(
       connectOptions: connectOptions,
       membersLimit: membersLimit,
       forceMigratingFrom: sfuToForceExclude,
       migratingFromList: sfusToExclude,
       hintHighScaleLivestreamPublisher: hintHighScaleLivestreamPublisher,
+      clientEventRetryCount: clientEventRetryCount,
     );
 
     if (joinedResult is! Success<CallCredentials>) {
@@ -1287,7 +1320,7 @@ class Call {
           _suspendedTrackStates[trackId] = SuspendedTrackState.neverStarted;
         },
         onReconnectionNeeded: (pc, strategy) {
-          _session?.trace('pc_reconnection_needed', {
+          _session?.trace(TraceTag.pcReconnectionNeeded, {
             'peerConnectionId': pc.type.name,
             'reconnectionStrategy': strategy.name,
           });
@@ -1322,6 +1355,7 @@ class Call {
       final sessionResult = await _startSession(
         _session!,
         reconnectDetails: reconnectDetails,
+        clientEventRetryCount: clientEventRetryCount,
       );
 
       if (sessionResult is! Success<None>) {
@@ -1413,6 +1447,7 @@ class Call {
     String? forceMigratingFrom,
     List<String> migratingFromList = const [],
     bool? hintHighScaleLivestreamPublisher,
+    int clientEventRetryCount = 0,
   }) async {
     _logger.d(
       () =>
@@ -1451,6 +1486,7 @@ class Call {
         migratingFromList: effectiveMigratingFromList,
         membersLimit: membersLimit,
         hintHighScaleLivestreamPublisher: hintHighScaleLivestreamPublisher,
+        clientEventRetryCount: clientEventRetryCount,
       );
 
       return joinedResult.fold(
@@ -1488,6 +1524,7 @@ class Call {
     int? membersLimit,
     CallConnectOptions? connectOptions,
     bool? hintHighScaleLivestreamPublisher,
+    int clientEventRetryCount = 0,
   }) async {
     _logger.d(
       () =>
@@ -1498,6 +1535,12 @@ class Call {
       _logger.w(() => '[joinCall] rejected (call was left)');
       return Result.error('call was left');
     }
+
+    final reporter = _streamVideo.clientEventReporter;
+    final joinStageId = reporter.beginStage(
+      callCid,
+      ClientEventStage.coordinatorJoin,
+    );
 
     final joinResult = await _coordinatorClient.joinCall(
       callCid: callCid,
@@ -1510,9 +1553,24 @@ class Call {
     );
 
     if (joinResult is! Success<CoordinatorJoined>) {
+      final failure = joinResult as Failure;
+      reporter.failStageWithError(
+        joinStageId,
+        failure.error,
+        retryCount: clientEventRetryCount,
+      );
       _logger.e(() => '[joinCall] join failed: $joinResult');
-      return joinResult as Failure;
+      return failure;
     }
+
+    // Server call_session_id is now known; stamp it on subsequent stages.
+    reporter
+      ..setCallSessionId(callCid, joinResult.data.metadata.session.id)
+      ..completeStage(
+        joinStageId,
+        outcome: ClientEventOutcome.success,
+        retryCount: clientEventRetryCount,
+      );
 
     final receivedOrCreated = CallReceivedOrCreatedData(
       wasCreated: joinResult.data.wasCreated,
@@ -1630,6 +1688,7 @@ class Call {
   Future<Result<None>> _startSession(
     CallSession session, {
     ReconnectDetails? reconnectDetails,
+    int clientEventRetryCount = 0,
   }) async {
     _logger.d(
       () => '[startSession] sessionId: $session',
@@ -1638,7 +1697,7 @@ class Call {
     _session = session;
     _unifiedSessionId ??= _session?.sessionId;
 
-    _sfuStatsReporter?.stop();
+    await _flushAndStopSfuStatsReporter();
     _subscriptions.cancel(_idSessionStats);
     _subscriptions.cancel(_idSessionEvents);
 
@@ -1662,6 +1721,7 @@ class Call {
     final result = await session.start(
       reconnectDetails: reconnectDetails,
       capabilities: _sfuClientCapabilities,
+      clientEventRetryCount: clientEventRetryCount,
       onRtcManagerCreatedCallback: (_) async {
         _logger.v(() => '[startSession] applying connect options');
         unawaited(
@@ -1694,13 +1754,16 @@ class Call {
             .listen(
               (stats) {
                 _stats.emit(stats);
+                // Telemetry: feed subscriber stats for first-frame detection.
+                session.rtcManager?.onSubscriberStats(
+                  stats.subscriberStatsBundle.stats,
+                );
               },
             ),
       );
     }
 
     if (_sfuStatsOptions != null) {
-      unawaited(_sfuStatsReporter?.sendSfuStats());
       _sfuStatsReporter =
           SfuStatsReporter(
             callSession: session,
@@ -1773,7 +1836,7 @@ class Call {
           )) {
         _logger.w(() => '[onSfuEvent] socket disconnected');
 
-        _session?.trace('sfu_socket_disconnected', {
+        _session?.trace(TraceTag.sfuSocketDisconnected, {
           'closeCode': sfuEvent.reason.closeCode,
           'closeReason': sfuEvent.reason.closeReason,
         });
@@ -1790,7 +1853,7 @@ class Call {
       }
     } else if (sfuEvent is SfuSocketFailed) {
       _logger.w(() => '[onSfuEvent] socket failed');
-      _session?.trace('sfu_socket_failed', {
+      _session?.trace(TraceTag.sfuSocketFailed, {
         'error': sfuEvent.error.message,
       });
       await _reconnect(
@@ -1799,7 +1862,7 @@ class Call {
       );
     } else if (sfuEvent is SfuGoAwayEvent) {
       _logger.w(() => '[onSfuEvent] go away, migrating sfu');
-      _session?.trace('sfu_go_away', {
+      _session?.trace(TraceTag.sfuSocketGoAway, {
         'reason': sfuEvent.goAwayReason.name,
       });
       await _reconnect(
@@ -1809,7 +1872,7 @@ class Call {
     }
     // error event
     else if (sfuEvent is SfuErrorEvent) {
-      _session?.trace('sfu_error', {
+      _session?.trace(TraceTag.sfuSocketError, {
         'code': sfuEvent.error.code.name,
         'error': sfuEvent.error.message,
         'strategy': sfuEvent.error.reconnectStrategy.name,
@@ -1855,6 +1918,7 @@ class Call {
   Future<void> _reconnect(
     SfuReconnectionStrategy strategy, {
     String? reconnectReason,
+    bool triggeredByNetwork = false,
   }) async {
     if (_callJoinLock.locked) {
       if (strategy == SfuReconnectionStrategy.rejoin) _isRejoinPending = true;
@@ -1910,7 +1974,7 @@ class Call {
           return;
         }
 
-        _session?.trace('callReconnect', {
+        _session?.trace(TraceTag.callReconnect, {
           'strategy': strategy.name,
           'reason': reconnectReason,
         });
@@ -1931,7 +1995,7 @@ class Call {
 
           if (networkStatus == InternetStatus.disconnected) {
             _logger.w(() => '[reconnect] reconnection timeout');
-            _session?.trace('callReconnectFailed', {
+            _session?.trace(TraceTag.callReconnectFailed, {
               'strategy': strategy.name,
               'error': 'reconnection timeout',
             });
@@ -1943,7 +2007,7 @@ class Call {
             _logger.w(
               () => '[reconnect] rejected (call was left during network wait)',
             );
-            _session?.trace('callReconnectFailed', {
+            _session?.trace(TraceTag.callReconnectFailed, {
               'strategy': strategy.name,
               'error': 'call was left',
             });
@@ -1955,6 +2019,16 @@ class Call {
           // capture BEFORE dispatch — strategy may change inside the helper
           final wasMigrating =
               _reconnectStrategy == SfuReconnectionStrategy.migrate;
+
+          final joinReason = triggeredByNetwork
+              ? JoinReason.networkAvailable
+              : _reconnectStrategy.joinReason;
+          if (joinReason != null) {
+            _streamVideo.clientEventReporter.reportJoinAttempt(
+              callCid,
+              reason: joinReason,
+            );
+          }
 
           final reconnectResult = switch (_reconnectStrategy) {
             SfuReconnectionStrategy.fast => await _reconnectFast(
@@ -1970,7 +2044,7 @@ class Call {
           };
 
           if (reconnectResult.isSuccess) {
-            _session?.trace('callReconnectSuccess', {
+            _session?.trace(TraceTag.callReconnectSuccess, {
               'strategy': strategy.name,
             });
           } else {
@@ -1989,17 +2063,26 @@ class Call {
                 DateTime.now().difference(reconnectStartTime) >
                 _fastReconnectDeadline;
 
-            // don't immediately switch to the REJOIN strategy, but instead
-            // attempt to reconnect with the FAST strategy a few times first.
             final hasPendingRejoin = _isRejoinPending;
             _isRejoinPending = false;
+
+            final hasClosedPeerConnection =
+                (_session?.rtcManager?.publisher?.isClosed() ?? false) ||
+                (_session?.rtcManager?.subscriber.isClosed() ?? false);
+
+            final hasReachedFastReconnectLimit =
+                fastReconnectAttemptsCount >= 2;
+
+            final isAlreadyRejoining =
+                _reconnectStrategy == SfuReconnectionStrategy.rejoin;
+
             final shouldRejoin =
+                isAlreadyRejoining ||
                 hasPendingRejoin ||
                 mustPerformRejoin ||
                 wasMigrating ||
-                fastReconnectAttemptsCount >= 2 ||
-                !(_session?.rtcManager?.publisher?.isHealthy() ?? true) ||
-                !(_session?.rtcManager?.subscriber.isHealthy() ?? true);
+                hasReachedFastReconnectLimit ||
+                hasClosedPeerConnection;
 
             if (!shouldRejoin) {
               fastReconnectAttemptsCount++;
@@ -2016,7 +2099,7 @@ class Call {
               _logger.w(() => '[reconnect] unrecoverable error');
               _stateManager.lifecycleCallReconnectingFailed();
 
-              _session?.trace('callReconnectFailed', {
+              _session?.trace(TraceTag.callReconnectFailed, {
                 'strategy': strategy.name,
                 'error': error.toString(),
               });
@@ -2174,7 +2257,7 @@ class Call {
                 '[_awaitNetworkAvailable] network dropped during '
                 '${stabilityWindow.inSeconds}s stability window, retrying',
           );
-          _session?.trace('awaitNetwork.unstable', {
+          _session?.trace(TraceTag.awaitNetworkUnstable, {
             'stabilityWindowSeconds': stabilityWindow.inSeconds,
           });
         } on TimeoutException {
@@ -2243,6 +2326,18 @@ class Call {
   Future<Result<None>> leave({DisconnectReason? reason}) async {
     _logger.i(() => '[leave] reason: $reason');
 
+    final abortCode = switch (reason) {
+      DisconnectReasonEnded() ||
+      DisconnectReasonCallEnded() => ClientEventStandardCode.backendLeave,
+      // Reconnection gave up — treat as a device-offline
+      DisconnectReasonReconnectionFailed() =>
+        ClientEventStandardCode.networkOffline,
+      _ => ClientEventStandardCode.clientAborted,
+    };
+    _streamVideo.clientEventReporter
+      ..abort(callCid, abortCode)
+      ..unregisterCall(callCid);
+
     try {
       final didDisconnect = await _disconnect(
         sfuLeaveReason: _sfuLeaveReason(reason),
@@ -2295,6 +2390,23 @@ class Call {
     return true;
   }
 
+  Future<void> _flushAndStopSfuStatsReporter() async {
+    final reporter = _sfuStatsReporter;
+    if (reporter == null) return;
+
+    final status = state.value.status;
+    if (status is CallStatusDisconnected) {
+      _session?.trace(
+        'call.leaveReason',
+        _sfuLeaveReason(status.reason),
+      );
+    }
+
+    await reporter.flush();
+    reporter.stop();
+    _sfuStatsReporter = null;
+  }
+
   String _sfuLeaveReason(DisconnectReason? reason) {
     if (reason == null) return 'user is leaving the call';
 
@@ -2334,7 +2446,7 @@ class Call {
       await operation.cancel();
     }
 
-    _sfuStatsReporter?.stop();
+    await _flushAndStopSfuStatsReporter();
     _subscriptions.cancelAll();
     _cancelables.cancelAll();
 
@@ -3704,9 +3816,8 @@ class Call {
     if (result.isSuccess) {
       _connectOptions = connectOptions.copyWith(audioOutputDevice: device);
 
-      _stateManager.participantSetAudioOutputDevice(
-        device: device,
-      );
+      _stateManager.participantSetAudioOutputDevice(device: device);
+      _stateManager.audioOutputSelectedByUser = true;
     }
 
     return result;

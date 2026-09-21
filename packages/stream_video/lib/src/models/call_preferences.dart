@@ -59,7 +59,7 @@ abstract class CallPreferences {
   InternetConnection? get internetConnectionInstance;
   List<HealthCheckEndpoint>? get healthCheckEndpoints;
   Duration get healthCheckInterval;
-  
+
   /// Configuration for how the SDK handles call moderation events.
   /// Defaults to [VideoModerationConfig.disabled].
   VideoModerationConfig get videoModerationConfig;
@@ -192,7 +192,7 @@ class DefaultCallPreferences implements CallPreferences {
 
   @override
   final Duration healthCheckInterval;
-  
+
   /// Configuration for how the SDK handles call moderation events.
   ///
   /// Defaults to [VideoModerationConfig.disabled].

@@ -149,6 +149,7 @@ MockClientState setupMockClientState() {
     sync: true,
   );
   final outgoingCallEmitter = MutableStateEmitterImpl<Call?>(null, sync: true);
+  final incomingCallEmitter = MutableStateEmitterImpl<Call?>(null, sync: true);
 
   final clientState = MockClientState();
   when(() => clientState.user).thenAnswer((_) => userStateEmitter);
@@ -163,6 +164,10 @@ MockClientState setupMockClientState() {
   when(() => clientState.outgoingCall).thenAnswer((_) => outgoingCallEmitter);
   when(
     () => clientState.setOutgoingCall(any()),
+  ).thenAnswer((_) => Future.value());
+  when(() => clientState.incomingCall).thenAnswer((_) => incomingCallEmitter);
+  when(
+    () => clientState.setIncomingCall(any()),
   ).thenAnswer((_) => Future.value());
 
   return clientState;
@@ -224,6 +229,7 @@ MockCoordinatorClient setupMockCoordinatorClient({
       migratingFromList: any(named: 'migratingFromList'),
       video: any(named: 'video'),
       membersLimit: any(named: 'membersLimit'),
+      e2ee: any(named: 'e2ee'),
     ),
   ).thenAnswer(
     (_) => Future.value(
@@ -265,12 +271,13 @@ MockRetryPolicy setupMockRetryPolicy() {
   return retryPolicy;
 }
 
-SfuCallState createTestSfuCallState() {
+SfuCallState createTestSfuCallState({bool e2eeEnabled = false}) {
   return SfuCallState(
     participants: const [],
     participantCount: const SfuParticipantCount(total: 0, anonymous: 0),
     startedAt: DateTime.now(),
     pins: const [],
+    e2eeEnabled: e2eeEnabled,
   );
 }
 
@@ -278,6 +285,10 @@ MockCallSession setupMockCallSession() {
   final sfuClient = MockSfuClient();
 
   final callSession = MockCallSession();
+
+  // Live by default. `Call.clearE2EEManager` reads this to tell a release from
+  // a live call apart from one on the way out of leave().
+  when(() => callSession.isDisposed).thenReturn(false);
 
   when(
     () => callSession.start(
@@ -373,6 +384,7 @@ MockSessionFactory setupMockSessionFactory({MockCallSession? callSession}) {
       streamVideo: any(named: 'streamVideo'),
       leftoverTraceRecords: any(named: 'leftoverTraceRecords'),
       pcFactory: any(named: 'pcFactory'),
+      e2eeManager: any(named: 'e2eeManager'),
     ),
   ).thenAnswer(
     (_) => Future.value(callSession ?? setupMockCallSession()),

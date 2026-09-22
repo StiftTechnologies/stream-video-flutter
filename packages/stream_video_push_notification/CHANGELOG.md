@@ -1,3 +1,22 @@
+## 1.6.0
+
+### ✅ Added
+
+- [iOS] Added `ActionCallIncomingFailed` and `IncomingCallFailureReason` to notify when the system blocks showing an incoming call (e.g. due to Do Not Disturb or block list). Listen via `onRingingEvent<ActionCallIncomingFailed>`.
+- [Android] Added a Telecom integration for the ringing flow, which registers ringing calls with the platform's [Telecom stack](https://developer.android.com/develop/connectivity/telecom). This gives the call proper audio focus and a place in the system call state, and lets it be answered or hung up from a paired watch, a car head unit or a Bluetooth headset. The incoming call notification and full-screen ringing UI are unchanged. It is on by default on Android 17 and above, where ringing from a push no longer works reliably without it, and off below that, so existing integrations are unaffected. Configure it with `AndroidPushConfiguration(telecom: TelecomPushConfiguration(...))`.
+
+### 🐞 Fixed
+
+- Fixed an issue where `consumeIncomingCall` could create multiple `Call` instances for the same ringing flow, causing state conflicts and UI issues.
+- [iOS] Fixed calls answered on the CallKit screen during a cold start or terminated state not being properly joined, or being incorrectly ended on the device. The SDK now reliably detects and joins answered calls in these scenarios.
+- [iOS] Fixed the CallKit provider configuration being lost when a VoIP push woke the app before any Dart code had run, which dropped the configured ringtone, icon and Recents behaviour on a cold start.
+- [Android] Fixed the incoming call ringtone being silently muted on Android 17. The ringtone is now played from a `phoneCall` foreground service, which Android 17's background audio hardening requires for audio played while no activity is visible.
+
+### 🔄 Changed
+
+- [Android] The plugin now compiles against Java 17, matching the other Stream Video Flutter packages, and adds `androidx.core:core-telecom` and `org.jetbrains.kotlinx:kotlinx-coroutines-android` as dependencies.
+- [Android] The plugin now explicitly declares `BLUETOOTH_CONNECT` permission for clarity. It's optional and only needed for Bluetooth features on API 31+. Only the active Bluetooth device will appear if not granted.
+
 ## 1.5.0
 
 - Updated `stream_video` dependency to [`1.5.0`](https://pub.dev/packages/stream_video/changelog).

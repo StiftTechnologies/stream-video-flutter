@@ -1,8 +1,4 @@
-import 'dart:async';
-
-import 'package:app_links/app_links.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:rxdart/rxdart.dart';
@@ -10,7 +6,6 @@ import 'package:stream_chat_flutter/stream_chat_flutter.dart' as chat;
 import 'package:stream_video_flutter/stream_video_flutter.dart';
 import 'package:stream_video_flutter/stream_video_flutter_l10n.dart';
 
-import '../core/model/environment.dart';
 import '../di/injector.dart';
 import '../router/router.dart';
 import '../router/routes.dart';
@@ -37,6 +32,7 @@ class _StreamDogFoodingAppContentState
   final _compositeSubscription = CompositeSubscription();
   bool? _microphoneEnabledBeforeInterruption;
   bool _isInitialized = false;
+  String? _routedCallCid;
 
   @override
   void initState() {
@@ -69,8 +65,6 @@ class _StreamDogFoodingAppContentState
 
     // Observe call kit events.
     _observeRingingEvents();
-    // Observes deep links.
-    _observeDeepLinks();
     // Observe FCM messages.
     _observeFcmMessages();
 
@@ -99,6 +93,25 @@ class _StreamDogFoodingAppContentState
     );
   }
 
+  /// Opens the call screen for [call], at most once per call.
+  void _showCallScreen(Call call) {
+    if (_routedCallCid == call.callCid.value) return;
+    _routedCallCid = call.callCid.value;
+
+    final extra = (
+      call: call,
+      connectOptions: null,
+      effectsManager: null,
+      encryptionKey: null,
+    );
+
+    _router.push(CallRoute($extra: extra).location, extra: extra).whenComplete(
+      () {
+        if (_routedCallCid == call.callCid.value) _routedCallCid = null;
+      },
+    );
+  }
+
   void _tryConsumingIncomingCallFromTerminatedState() {
     if (!CurrentPlatform.isAndroid) return;
 
@@ -109,15 +122,7 @@ class _StreamDogFoodingAppContentState
 
         final streamVideo = locator.get<StreamVideo>();
         streamVideo.consumeAndAcceptActiveCall(
-          onCallAccepted: (call) {
-            final extra = (
-              call: call,
-              connectOptions: null,
-              effectsManager: null,
-            );
-
-            _router.push(CallRoute($extra: extra).location, extra: extra);
-          },
+          onCallAccepted: _showCallScreen,
         );
       });
     } else {
@@ -128,40 +133,20 @@ class _StreamDogFoodingAppContentState
   void _observeRingingEvents() {
     final streamVideo = locator.get<StreamVideo>();
 
-    // On mobile we depend on call kit notifications.
-    // On desktop and web they are (currently) not available, so we depend on a
-    // websocket which can receive a call when the app is open.
     if (CurrentPlatform.isMobile) {
+      // Answered on the platform call UI (CallKit, or the Android notification).
       _compositeSubscription.add(
-        streamVideo.observeCoreRingingEvents(
-          onCallAccepted: (callToJoin) {
-            // Navigate to the call screen.
-            final extra = (
-              call: callToJoin,
-              connectOptions: null,
-              effectsManager: null,
-            );
-
-            _router.push(CallRoute($extra: extra).location, extra: extra);
-          },
-        ),
-      );
-    } else {
-      _compositeSubscription.add(
-        streamVideo.state.incomingCall.listen((call) {
-          if (call == null) return;
-
-          // Navigate to the call screen.
-          final extra = (
-            call: call,
-            connectOptions: null,
-            effectsManager: null,
-          );
-
-          _router.push(CallRoute($extra: extra).location, extra: extra);
-        }),
+        streamVideo.observeCoreRingingEvents(onCallAccepted: _showCallScreen),
       );
     }
+
+    // The in-app incoming call UI.
+    _compositeSubscription.add(
+      streamVideo.state.incomingCall.listen((call) {
+        if (call == null) return;
+        _showCallScreen(call);
+      }),
+    );
   }
 
   void _observeFcmMessages() {
@@ -169,74 +154,6 @@ class _StreamDogFoodingAppContentState
     _compositeSubscription.add(
       FirebaseMessaging.onMessage.listen(handleRemoteMessage),
     );
-  }
-
-  Future<void> _observeDeepLinks() async {
-    if (kIsWeb) return;
-
-    // The app was in the background.
-    final deepLinkSubscription = AppLinks().uriLinkStream.listen((uri) {
-      if (mounted) _handleDeepLink(uri);
-    });
-
-    _compositeSubscription.add(deepLinkSubscription);
-
-    // The app was terminated.
-    try {
-      final initialUri = await AppLinks().getInitialLink();
-      if (initialUri != null) {
-        await _handleDeepLink(initialUri);
-      }
-    } catch (e) {
-      debugPrint(e.toString());
-    }
-  }
-
-  Future<void> _handleDeepLink(Uri uri) async {
-    final user = _userAuthController.currentUser;
-
-    if (user == null) {
-      return;
-    }
-
-    final environment = Environment.fromHost(uri.host);
-
-    await AppInjector.reset();
-    await AppInjector.init(forceEnvironment: environment);
-
-    final authController = locator.get<UserAuthController>();
-    await authController.login(User(info: user), environment);
-
-    String? callId;
-    for (final segment in uri.pathSegments.indexed) {
-      if (segment.$2 == 'join') {
-        // Next segment is the callId
-        callId = uri.pathSegments[segment.$1 + 1];
-        break;
-      }
-    }
-
-    callId ??= uri.queryParameters['id'];
-    if (callId == null) return;
-
-    // return if the video user is not yet logged in.
-    final currentUser = _userAuthController.currentUser;
-    if (currentUser == null) return;
-
-    try {
-      final streamVideo = locator.get<StreamVideo>();
-      final call = streamVideo.makeCall(callType: kCallType, id: callId);
-
-      await call.getOrCreate();
-
-      await _router.push<void>(LobbyRoute($extra: call).location, extra: call);
-    } catch (e, stk) {
-      debugPrint('Error joining or creating call: $e');
-      debugPrint(stk.toString());
-      return;
-    }
-
-    // Navigate to the lobby screen.
   }
 
   @override

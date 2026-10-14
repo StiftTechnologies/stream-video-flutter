@@ -1,10 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:stream_video/stream_video.dart';
 
+final _logger = taggedLogger(tag: 'SV:PartialCallStateBuilder');
+
 /// Convenience widget to build a part of the call screen based on a partial call state.
 ///
-/// It wraps a [StreamBuilder] and uses the [call] and the [selector] to
-/// rebuild the widget when the relevant state changes.
+/// Listens to `call.partialState(selector)` while mounted and rebuilds with
+/// [builder] when the selected value changes. It subscribes again when [call]
+/// or [selector] changes. A [selector] that keeps its identity across
+/// rebuilds, such as a static or top-level function, keeps a single
+/// subscription.
 class PartialCallStateBuilder<T> extends StatelessWidget {
   const PartialCallStateBuilder({
     required this.call,
@@ -19,10 +26,180 @@ class PartialCallStateBuilder<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
-      stream: call.partialState(selector),
-      initialData: selector(call.state.value),
-      builder: (context, snapshot) => builder(context, snapshot.data as T),
+    return _PartialCallStateListener<T>(
+      call: call,
+      selector: selector,
+      builder: builder,
+    );
+  }
+}
+
+// Holds the last selected value. Reports a partial state error to
+// [FlutterError] once, and again only after a new value has arrived.
+class _PartialCallStateListener<T> extends StatefulWidget {
+  const _PartialCallStateListener({
+    required this.call,
+    required this.selector,
+    required this.builder,
+    super.key,
+  });
+
+  final Call call;
+  final CallStateSelector<T> selector;
+  final Widget Function(BuildContext context, T data) builder;
+
+  @override
+  State<_PartialCallStateListener<T>> createState() =>
+      _PartialCallStateListenerState<T>();
+}
+
+class _PartialCallStateListenerState<T>
+    extends State<_PartialCallStateListener<T>> {
+  StreamSubscription<T>? _subscription;
+  late T _data;
+  // The first value of a subscription replays the current state.
+  bool _awaitingReplay = true;
+  bool _errorReported = false;
+
+  T _select() => widget.selector(widget.call.state.value);
+
+  @override
+  void initState() {
+    super.initState();
+    _data = _select();
+    _subscribe();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PartialCallStateListener<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.call != widget.call ||
+        oldWidget.selector != widget.selector) {
+      _data = _select();
+      _subscribe();
+    }
+  }
+
+  void _subscribe() {
+    _subscription?.cancel();
+    _awaitingReplay = true;
+    _subscription = widget.call
+        .partialState(widget.selector)
+        .listen(_onData, onError: _onError);
+  }
+
+  void _onData(T data) {
+    _errorReported = false;
+    final isReplay = _awaitingReplay;
+    _awaitingReplay = false;
+    if (!mounted || (isReplay && isSameCallStateSelection(data, _data))) return;
+    setState(() => _data = data);
+  }
+
+  void _onError(Object error, StackTrace stackTrace) {
+    if (_errorReported) {
+      _logger.e(() => '[PartialCallStateBuilder] partial state error: $error');
+      return;
+    }
+    _errorReported = true;
+    _logger.e(
+      () =>
+          '[PartialCallStateBuilder] partial state error: $error\n'
+          '$stackTrace',
+    );
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'stream_video_flutter',
+        context: ErrorDescription('while listening to a partial call state'),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.builder(context, _data);
+  }
+}
+
+/// Convenience widget to build a part of the call screen from the call's
+/// participants.
+///
+/// Reads [Call.participantsStream], which is rate-limited by participant count,
+/// and seeds the first frame from `call.state.value.callParticipants`, since
+/// the stream delivers its first value asynchronously.
+///
+/// Use this wherever the participants themselves get rendered. When only a
+/// derived value is needed — a count, whether anyone is speaking — select that
+/// through [PartialCallStateBuilder] instead, so the widget doesn't rebuild on
+/// participant updates that leave it the same.
+class CallParticipantsBuilder extends StatefulWidget {
+  const CallParticipantsBuilder({
+    required this.call,
+    required this.builder,
+    super.key,
+  });
+
+  final Call call;
+  final Widget Function(
+    BuildContext context,
+    List<CallParticipantState> participants,
+  )
+  builder;
+
+  @override
+  State<CallParticipantsBuilder> createState() =>
+      _CallParticipantsBuilderState();
+}
+
+class _CallParticipantsBuilderState extends State<CallParticipantsBuilder> {
+  // Pins the stream identity across rebuilds, so `StreamBuilder` never tears
+  // down its subscription and restarts the throttle window.
+  late Stream<List<CallParticipantState>> _participants =
+      widget.call.participantsStream;
+
+  @override
+  void didUpdateWidget(covariant CallParticipantsBuilder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.call != oldWidget.call) {
+      _participants = widget.call.participantsStream;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<CallParticipantState>>(
+      // `StreamBuilder` carries its snapshot across a stream swap, so without
+      // this the previous call's participants render until the new stream
+      // emits. A new key rebuilds it against the new `initialData`.
+      key: ObjectKey(widget.call),
+      stream: _participants,
+      initialData: widget.call.state.value.callParticipants,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          // `StreamBuilder` builds an error snapshot with no data, so fall back
+          // to the current state rather than throwing a null check over the
+          // real error — but don't let the error itself go unrecorded.
+          _logger.e(
+            () =>
+                '[CallParticipantsBuilder] participantsStream error: '
+                '${snapshot.error}',
+          );
+        }
+
+        return widget.builder(
+          context,
+          snapshot.data ?? widget.call.state.value.callParticipants,
+        );
+      },
     );
   }
 }

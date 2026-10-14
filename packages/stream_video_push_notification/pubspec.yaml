@@ -30,7 +30,10 @@ dependencies:
 
 dev_dependencies:
   build_runner: ^2.9.0
-  firebase_core_platform_interface: ^7.1.0
+  # ^7.1.0 upstream, but firebase_messaging 16.4.2 — the newest release that cap allows —
+  # extends FirebasePlugin and reads pluginConstants, neither of which it can see on
+  # firebase_core_platform_interface 7.x, so the tests fail to compile.
+  firebase_core_platform_interface: ^8.0.0
   firebase_messaging_platform_interface: ^4.9.0
   flutter_lints: ^6.0.0
   flutter_test:

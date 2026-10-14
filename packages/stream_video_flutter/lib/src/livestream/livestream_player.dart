@@ -8,22 +8,43 @@ import 'package:rxdart/rxdart.dart';
 import '../../stream_video_flutter.dart';
 
 typedef LivestreamEndedBuilder =
-    Widget Function(BuildContext context, Call call, CallState callState);
+    Widget Function(
+      BuildContext context,
+      Call call,
+      CallState callState,
+    );
 
 typedef LivestreamBackstageBuilder =
-    Widget Function(BuildContext context, Call call, CallState callState);
+    Widget Function(
+      BuildContext context,
+      Call call,
+      CallState callState,
+    );
 
 typedef LivestreamControlsBuilder =
-    Widget Function(BuildContext context, Call call, CallState callState);
+    Widget Function(
+      BuildContext context,
+      Call call,
+      CallState callState,
+    );
 
 typedef LivestreamEndedWidgetBuilder =
-    Widget Function(BuildContext context, Call call);
+    Widget Function(
+      BuildContext context,
+      Call call,
+    );
 
 typedef LivestreamBackstageWidgetBuilder =
-    Widget Function(BuildContext context, Call call);
+    Widget Function(
+      BuildContext context,
+      Call call,
+    );
 
 typedef LivestreamControlsWidgetBuilder =
-    Widget Function(BuildContext context, Call call);
+    Widget Function(
+      BuildContext context,
+      Call call,
+    );
 
 enum LivestreamJoinBehaviour {
   /// Automatically join the livestream backstage or live call when the widget is initialized. Depending on permissions.
@@ -232,6 +253,9 @@ class _LivestreamPlayerState extends State<LivestreamPlayer>
   StreamSubscription? _joinSubscription;
   StreamSubscription? _leaveSubscription;
 
+  /// Set once the auto-join has fired, so it fires only once per player.
+  bool _connectStarted = false;
+
   final CompositeSubscription _compositeSubscription = CompositeSubscription();
 
   /// Represents a call.
@@ -385,10 +409,18 @@ class _LivestreamPlayerState extends State<LivestreamPlayer>
 
   @override
   Widget build(BuildContext context) {
+    // The controls repaint every second as the duration ticks; the boundary
+    // keeps that from repainting the screen the player is embedded in.
+    return RepaintBoundary(child: _buildPlayer(context));
+  }
+
+  static ({bool isBackstage, bool hasEnded}) _playerData(CallState state) =>
+      (isBackstage: state.isBackstage, hasEnded: state.endedAt != null);
+
+  Widget _buildPlayer(BuildContext context) {
     return PartialCallStateBuilder(
       call: call,
-      selector: (state) =>
-          (isBackstage: state.isBackstage, hasEnded: state.endedAt != null),
+      selector: _playerData,
       builder: (context, data) {
         final isBackstage = data.isBackstage;
         final hasEnded = data.hasEnded;
@@ -456,27 +488,31 @@ class _LivestreamPlayerState extends State<LivestreamPlayer>
                     ) ??
                     Align(
                       alignment: Alignment.bottomCenter,
-                      child: StreamBuilder<Duration>(
-                        stream: call.callDurationStream,
-                        builder: (context, snapshot) {
-                          final duration = snapshot.data ?? Duration.zero;
+                      // Repaints once a second, so it doesn't repaint the
+                      // video content underneath with it.
+                      child: RepaintBoundary(
+                        child: StreamBuilder<Duration>(
+                          stream: call.callDurationStream,
+                          builder: (context, snapshot) {
+                            final duration = snapshot.data ?? Duration.zero;
 
-                          return LivestreamInfo(
-                            call: call,
-                            fullscreen: _fullscreen,
-                            onFullscreenTapped: () {
-                              if (widget.onFullscreenTapped != null) {
-                                widget.onFullscreenTapped?.call();
-                              } else {
-                                setState(() {
-                                  _fullscreen = !_fullscreen;
-                                });
-                              }
-                            },
-                            duration: duration,
-                            showParticipantCount: widget.showParticipantCount,
-                          );
-                        },
+                            return LivestreamInfo(
+                              call: call,
+                              fullscreen: _fullscreen,
+                              onFullscreenTapped: () {
+                                if (widget.onFullscreenTapped != null) {
+                                  widget.onFullscreenTapped?.call();
+                                } else {
+                                  setState(() {
+                                    _fullscreen = !_fullscreen;
+                                  });
+                                }
+                              },
+                              duration: duration,
+                              showParticipantCount: widget.showParticipantCount,
+                            );
+                          },
+                        ),
                       ),
                     ),
               ],
@@ -489,6 +525,22 @@ class _LivestreamPlayerState extends State<LivestreamPlayer>
 
   /// Joins a call.
   Future<void> _connect() async {
+    // Stop listening before the first await. The join stream also emits on
+    // every status change the join itself causes (Idle -> Connecting ->
+    // Connected), and each of those emissions would otherwise start another
+    // join while this one is still in flight.
+    if (_connectStarted) return;
+    _connectStarted = true;
+    unawaited(_joinSubscription?.cancel());
+    _joinSubscription = null;
+
+    // A player mounted on a call that is already joined has nothing
+    // to join.
+    if (call.state.value.status.isConnected) {
+      _logger.d(() => '[connect] skipped, call already connected');
+      return;
+    }
+
     try {
       _logger.d(() => '[connect] no args');
       final connectOptions =

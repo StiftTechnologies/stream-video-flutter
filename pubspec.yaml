@@ -26,10 +26,14 @@ dev_dependencies:
 dependency_overrides:
   cli_util: ^0.5.1
   file_picker: ^12.0.0-beta.5
+  # Upstream pins GetStream/webrtc-flutter here. This fork points at Stift's
+  # fork instead, so CI resolves the same artifact the app ships, and at a
+  # commit that also carries the camera-ownership SIGSEGV fix that
+  # GetStream@9b6fffa predates.
   stream_webrtc_flutter:
     git:
-      url: https://github.com/GetStream/webrtc-flutter.git
-      ref: 9b6fffaa5fda2652548cafc7d6ec87128409c6bc
+      url: https://github.com/StiftTechnologies/webrtc-flutter.git
+      ref: ff96fdb2466e07c28c0f68a3428f08872119acaf
 
 melos:
   ignore:

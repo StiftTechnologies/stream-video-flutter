@@ -1958,11 +1958,11 @@ packages:
     dependency: "direct overridden"
     description:
       path: "."
-      ref: ff96fdb2466e07c28c0f68a3428f08872119acaf
-      resolved-ref: ff96fdb2466e07c28c0f68a3428f08872119acaf
+      ref: "8276794f9bd388f62f462c0001b2e63aca68f736"
+      resolved-ref: "8276794f9bd388f62f462c0001b2e63aca68f736"
       url: "https://github.com/StiftTechnologies/webrtc-flutter.git"
     source: git
-    version: "4.0.0"
+    version: "4.0.1"
   string_scanner:
     dependency: transitive
     description:

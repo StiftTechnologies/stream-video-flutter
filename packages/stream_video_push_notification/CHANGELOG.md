@@ -1,3 +1,15 @@
+## 1.8.0
+
+### 🐞 Fixed
+
+- Unrecognized ringing events are now ignored.
+- [Android] Fixed a `NoSuchMethodError` crash on Android 5 and 6 (API 21–23).
+- [iOS] `setCallConnected` and `endCall` now respect `configureAudioSession: false`, and `setCallConnected` no longer answers outgoing calls.
+- [iOS] Fixed an outgoing call losing its options and `ActionCallStart` data when another call changed state while it was starting.
+- [iOS] CallKit mute, hold, group and DTMF events now report the call's uuid unchanged instead of uppercased.
+- [iOS] Fixed a held or resumed call toggling between held and active.
+- [iOS] Fixed an error when decoding `ActionCallToggleGroup` after ungrouping a CallKit call.
+
 ## 1.7.2
 
 ### 🐞 Fixed

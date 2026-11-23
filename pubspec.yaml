@@ -26,14 +26,14 @@ dev_dependencies:
 dependency_overrides:
   cli_util: ^0.5.1
   file_picker: ^12.0.0-beta.5
-  # Upstream pins GetStream/webrtc-flutter here. This fork points at Stift's
-  # fork instead, so CI resolves the same artifact the app ships, and at a
-  # commit that also carries the camera-ownership SIGSEGV fix that
-  # GetStream@9b6fffa predates, plus the 4.0.1 off-main-thread fixes.
+  # Upstream resolves the hosted stream_webrtc_flutter. This fork points at
+  # Stift's fork instead, so CI resolves the same artifact the app ships. The
+  # 4.1.0 sync still carries the camera-ownership SIGSEGV fix and the 4.0.1
+  # off-main-thread fixes the earlier pin was chosen for.
   stream_webrtc_flutter:
     git:
       url: https://github.com/StiftTechnologies/webrtc-flutter.git
-      ref: 8276794f9bd388f62f462c0001b2e63aca68f736
+      ref: e8944fdf2458dc027eb547cc4cc9724b8242bbb6
 
 melos:
   ignore:
@@ -54,13 +54,13 @@ melos:
         package_info_plus: ">=9.0.0 <11.0.0"
         share_plus: ^13.0.0
         stream_chat_flutter: ^10.0.0
-        stream_webrtc_flutter: ^4.0.1
-        stream_video: ^1.7.2
-        stream_video_filters: ^1.7.2
-        stream_video_flutter: ^1.7.2
-        stream_video_noise_cancellation: ^1.7.2
-        stream_video_push_notification: ^1.7.2
-        stream_video_screen_sharing: ^1.7.2
+        stream_webrtc_flutter: ^4.1.0
+        stream_video: ^1.8.0
+        stream_video_filters: ^1.8.0
+        stream_video_flutter: ^1.8.0
+        stream_video_noise_cancellation: ^1.8.0
+        stream_video_push_notification: ^1.8.0
+        stream_video_screen_sharing: ^1.8.0
 
       hooks:
         # Keep streamVideoVersion in globals.dart in sync with the pubspec version.
@@ -207,9 +207,3 @@ melos:
         flutter build apk --release --verbose
       description: |
         Run `flutter build apk` in the example app.
-
-    docs:
-      run: |
-        npm install -g https://github.com/GetStream/stream-chat-docusaurus-cli &&
-        npx stream-chat-docusaurus -i -s
-      description: Runs the docusaurus documentation locally.

@@ -27,7 +27,9 @@ dependency_overrides:
   cli_util: ^0.5.1
   file_picker: ^12.0.0-beta.5
   # Upstream resolves the hosted stream_webrtc_flutter. This fork points at
-  # Stift's fork instead, so CI resolves the same artifact the app ships.
+  # Stift's fork instead, so CI resolves the same artifact the app ships. The
+  # 4.1.0 sync still carries the camera-ownership SIGSEGV fix and the 4.0.1
+  # off-main-thread fixes the earlier pin was chosen for.
   stream_webrtc_flutter:
     git:
       url: https://github.com/StiftTechnologies/webrtc-flutter.git

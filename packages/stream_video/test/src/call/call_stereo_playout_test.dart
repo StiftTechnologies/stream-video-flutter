@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:stream_video/stream_video.dart';
 
 import 'fixtures/call_test_helpers.dart';
@@ -33,6 +34,12 @@ class _CustomCallPreferences implements CallPreferences {
   get participantsThrottleIntervalResolver => null;
   @override
   CallEncryptionKeyResolver? get encryptionKeyResolver => null;
+  @override
+  InternetConnection? get internetConnectionInstance => null;
+  @override
+  List<HealthCheckEndpoint>? get healthCheckEndpoints => null;
+  @override
+  Duration get healthCheckInterval => const Duration(seconds: 1);
 }
 
 void main() {

@@ -324,6 +324,17 @@ class _AudioPolicyCallPreferences implements CallPreferences {
       base.encryptionKeyResolver;
 
   @override
+  InternetConnection? get internetConnectionInstance =>
+      base.internetConnectionInstance;
+
+  @override
+  List<HealthCheckEndpoint>? get healthCheckEndpoints =>
+      base.healthCheckEndpoints;
+
+  @override
+  Duration get healthCheckInterval => base.healthCheckInterval;
+
+  @override
   String toString() =>
       'CallPreferences(audioConfigurationPolicy: $audioConfigurationPolicy, '
       'base: $base)';
